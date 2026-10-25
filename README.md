@@ -1,10 +1,40 @@
-# Snapcast
+<p align="center">
+  <img src="docs/logo/snapcast-icon.svg" width="112" alt="Snapcast logo">
+</p>
 
-An Android web browser built on Mozilla **GeckoView** that finds the videos on the page you are
-browsing and casts them to a **Chromecast**, in the spirit of *Web Video Cast*. Casting goes through
-a small proxy on the phone that replays the browser's own request headers (Referer, cookies,
+<h1 align="center">Snapcast</h1>
+
+<p align="center">
+  A web browser for Android that finds the videos on any page and casts them to your TV.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Zoryc/Snapcast/actions/workflows/ci.yml"><img src="https://github.com/Zoryc/Snapcast/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android 8.0+">
+  <img src="https://img.shields.io/badge/GeckoView-158-FF7139?logo=firefoxbrowser&logoColor=white" alt="GeckoView 158">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/01-home.png" width="200" alt="Home screen with speed dial">
+  &nbsp;
+  <img src="docs/screenshots/02-browser.png" width="200" alt="Browsing a page with a detected video">
+  &nbsp;
+  <img src="docs/screenshots/03-videos.png" width="200" alt="List of videos found on the page">
+  &nbsp;
+  <img src="docs/screenshots/04-addons.png" width="200" alt="Add-ons with one-tap uBlock Origin">
+</p>
+
+Snapcast is built on Mozilla **GeckoView**. While you browse, it spots the video streams on the page
+and lists them behind a floating button. One tap sends a video to a **Chromecast**. Casting goes
+through a small proxy on the phone that replays the browser's own request headers (Referer, cookies,
 User-Agent), so streams that refuse anonymous requests still play on the TV. Firefox add-ons such as
 **uBlock Origin** install straight from addons.mozilla.org.
+
+## Download
+
+Every push builds installable APKs in [GitHub Actions](https://github.com/Zoryc/Snapcast/actions/workflows/ci.yml).
+Open the latest green run and download **snapcast-release-arm64-v8a** (most phones), then install the APK.
+The other ABIs are in **snapcast-release-other-abis**.
 
 ## Features
 
