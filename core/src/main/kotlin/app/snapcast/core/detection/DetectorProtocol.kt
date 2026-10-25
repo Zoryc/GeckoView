@@ -1,6 +1,7 @@
 package app.snapcast.core.detection
 
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -109,7 +110,13 @@ object DetectorProtocol {
     }
 
     /** Decodes one message; returns null (never throws) for malformed or unknown messages. */
-    fun decode(text: String): DetectorMessage? = TODO()
+    fun decode(text: String): DetectorMessage? = try {
+        json.decodeFromString(DetectorMessage.serializer(), text)
+    } catch (e: SerializationException) {
+        null
+    } catch (e: IllegalArgumentException) {
+        null
+    }
 
-    fun encode(command: NativeCommand): String = TODO()
+    fun encode(command: NativeCommand): String = json.encodeToString(NativeCommand.serializer(), command)
 }

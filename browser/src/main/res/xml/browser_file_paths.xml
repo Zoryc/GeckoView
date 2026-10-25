@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) -->
+    <external-files-path
+        name="browser_downloads"
+        path="Download/" />
+    <!-- Fallback when external storage is unavailable (DownloadStorage.INTERNAL_DOWNLOADS_DIR) -->
+    <files-path
+        name="browser_downloads_internal"
+        path="downloads/" />
+</paths>

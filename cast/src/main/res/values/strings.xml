@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Media notification -->
+    <string name="cast_notification_channel_name">Casting</string>
+    <string name="cast_notification_channel_description">Playback controls while a video plays on your TV</string>
+    <string name="cast_notification_title_default">Casting</string>
+    <string name="cast_notification_casting_to">Casting to %1$s</string>
+    <string name="cast_notification_casting">Casting to your TV</string>
+    <string name="cast_action_rewind">Rewind 10 seconds</string>
+    <string name="cast_action_forward">Forward 10 seconds</string>
+    <string name="cast_action_play">Play</string>
+    <string name="cast_action_pause">Pause</string>
+    <string name="cast_action_stop">Stop casting</string>
+
+    <!-- Local files -->
+    <string name="cast_local_file_title">Phone video</string>
+    <string name="cast_local_file_subtitle">From this phone</string>
+    <string name="cast_local_subtitle_name">Subtitles</string>
+
+    <!-- Errors -->
+    <string name="cast_error_drm">This video is DRM-protected and can\'t be cast.</string>
+    <string name="cast_error_unavailable">Casting needs Google Play services, which aren\'t available on this device.</string>
+    <string name="cast_error_no_wifi">Connect your phone to the same Wi-Fi network as your Chromecast.</string>
+    <string name="cast_error_proxy">Couldn\'t start the local streaming server.</string>
+    <string name="cast_error_load_failed">The Chromecast couldn\'t load this video.</string>
+    <string name="cast_error_playback">The Chromecast stopped playing because of an error.</string>
+    <string name="cast_error_queue">Couldn\'t add the video to the queue.</string>
+    <string name="cast_error_local_file">Couldn\'t open the video file.</string>
+    <string name="cast_error_nothing_casting">Start casting a video first.</string>
+    <string name="cast_error_subtitle_read">Couldn\'t read the subtitle file.</string>
+    <string name="cast_error_subtitle_format">Only .srt and .vtt subtitle files are supported.</string>
+</resources>

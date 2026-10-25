@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <application>
+        <service
+            android:name="app.snapcast.browser.download.DownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- Shares downloads saved to app-specific storage on Android 8-9 (MediaStore is used on 10+). -->
+        <provider
+            android:name="app.snapcast.browser.download.BrowserFileProvider"
+            android:authorities="${applicationId}.browser.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/browser_file_paths" />
+        </provider>
+
+        <activity
+            android:name="app.snapcast.browser.notifications.WebNotificationClickActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <receiver
+            android:name="app.snapcast.browser.notifications.WebNotificationDismissReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

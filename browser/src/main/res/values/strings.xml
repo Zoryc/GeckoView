@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tabs -->
+    <string name="browser_home_title">Home</string>
+
+    <!-- Error pages -->
+    <string name="browser_error_retry">Try again</string>
+    <string name="browser_error_code">Error %1$d (category %2$d)</string>
+    <string name="browser_error_unknown_host_title">Server not found</string>
+    <string name="browser_error_unknown_host_message">Snapcast can\'t find this website. Check the address for typos and make sure you\'re connected to the internet.</string>
+    <string name="browser_error_refused_title">Unable to connect</string>
+    <string name="browser_error_refused_message">The site refused the connection. It may be temporarily unavailable or too busy. Try again in a few moments.</string>
+    <string name="browser_error_timeout_title">The connection timed out</string>
+    <string name="browser_error_timeout_message">The server took too long to respond. Check your connection and try again.</string>
+    <string name="browser_error_interrupted_title">The connection was interrupted</string>
+    <string name="browser_error_interrupted_message">The network link was interrupted while the page was loading.</string>
+    <string name="browser_error_offline_title">You\'re offline</string>
+    <string name="browser_error_offline_message">Connect to Wi-Fi or mobile data and try again.</string>
+    <string name="browser_error_security_title">Secure connection failed</string>
+    <string name="browser_error_security_message">The page can\'t be shown because the authenticity of the received data could not be verified.</string>
+    <string name="browser_error_certificate_title">Warning: potential security risk</string>
+    <string name="browser_error_certificate_message">The site\'s security certificate is not trusted. Someone could be trying to impersonate it, so the page was not loaded.</string>
+    <string name="browser_error_https_only_title">Secure site not available</string>
+    <string name="browser_error_https_only_message">This site doesn\'t support a secure (HTTPS) connection.</string>
+    <string name="browser_error_safe_browsing_title">Deceptive or harmful site blocked</string>
+    <string name="browser_error_safe_browsing_message">This page has been reported as dangerous (phishing, malware or unwanted software) and was blocked to protect you.</string>
+    <string name="browser_error_malformed_title">The address isn\'t valid</string>
+    <string name="browser_error_malformed_message">The URL is not in a recognized format. Check it for mistakes.</string>
+    <string name="browser_error_protocol_title">The address wasn\'t understood</string>
+    <string name="browser_error_protocol_message">No app on this device can open this kind of address.</string>
+    <string name="browser_error_redirect_title">The page isn\'t redirecting properly</string>
+    <string name="browser_error_redirect_message">The server is redirecting the request in a way that will never complete. Clearing the site\'s cookies may help.</string>
+    <string name="browser_error_file_not_found_title">File not found</string>
+    <string name="browser_error_file_not_found_message">The file may have been moved, renamed or deleted.</string>
+    <string name="browser_error_file_denied_title">Access to the file was denied</string>
+    <string name="browser_error_file_denied_message">The file can\'t be read. It may have been removed or its permissions changed.</string>
+    <string name="browser_error_corrupted_title">Corrupted content</string>
+    <string name="browser_error_corrupted_message">The page can\'t be shown because an error in the data transmission was detected.</string>
+    <string name="browser_error_unsafe_type_title">Unsafe file type</string>
+    <string name="browser_error_unsafe_type_message">The server sent a file type that is not allowed here.</string>
+    <string name="browser_error_crashed_title">The page crashed</string>
+    <string name="browser_error_crashed_message">The content process for this page stopped unexpectedly.</string>
+    <string name="browser_error_proxy_title">Proxy server problem</string>
+    <string name="browser_error_proxy_message">The proxy server is refusing connections or could not be found. Check your network\'s proxy settings.</string>
+    <string name="browser_error_port_title">This address is restricted</string>
+    <string name="browser_error_port_message">The address uses a network port that is normally used for something other than web browsing, so the request was cancelled for your protection.</string>
+    <string name="browser_error_local_network_title">Local network access blocked</string>
+    <string name="browser_error_local_network_message">The page tried to reach a device on your local network and was not allowed to.</string>
+    <string name="browser_error_data_uri_title">The address is too long</string>
+    <string name="browser_error_data_uri_message">This data: address is too long to be loaded.</string>
+    <string name="browser_error_unknown_title">The page couldn\'t be loaded</string>
+    <string name="browser_error_unknown_message">An unexpected error occurred while loading the page.</string>
+
+    <!-- Permission prompts: media device names -->
+    <string name="browser_media_front_camera">Front camera</string>
+    <string name="browser_media_back_camera">Back camera</string>
+    <string name="browser_media_camera">Camera</string>
+    <string name="browser_media_microphone">Microphone</string>
+    <string name="browser_media_screen">Screen</string>
+    <string name="browser_media_other">Other device</string>
+
+    <!-- Downloads -->
+    <string name="browser_download_channel_name">Downloads</string>
+    <string name="browser_download_channel_description">Progress and results of file downloads</string>
+    <string name="browser_download_default_name">download</string>
+    <string name="browser_download_preparing">Preparing download…</string>
+    <string name="browser_download_in_progress">Downloading %1$s</string>
+    <string name="browser_download_in_progress_private">Downloading a file</string>
+    <string name="browser_download_progress_of">%1$s of %2$s</string>
+    <plurals name="browser_download_queued">
+        <item quantity="one">%1$s · %2$d more queued</item>
+        <item quantity="other">%1$s · %2$d more queued</item>
+    </plurals>
+    <string name="browser_download_cancel">Cancel</string>
+    <string name="browser_download_complete">Download complete</string>
+    <string name="browser_download_failed">Download failed</string>
+    <string name="browser_download_failed_reason">Download failed: %1$s</string>
+    <string name="browser_download_cancelled">Cancelled</string>
+    <string name="browser_download_error_empty">The server sent no data</string>
+    <string name="browser_download_error_io">The file could not be saved</string>
+
+    <!-- Web notifications -->
+    <string name="browser_web_notifications_channel_name">Website notifications</string>
+    <string name="browser_web_notifications_channel_description">Notifications from websites you allowed to notify you</string>
+</resources>

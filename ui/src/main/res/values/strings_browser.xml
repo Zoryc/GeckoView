@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Address bar / top bar -->
+    <string name="ui_browser_address_hint">Search or enter address</string>
+    <string name="ui_browser_clear">Clear</string>
+    <string name="ui_browser_menu">More options</string>
+    <string name="ui_browser_private_tab">Private tab</string>
+    <string name="ui_browser_tabs_description">Tabs: %1$d open</string>
+    <string name="ui_browser_tabs_private_description">Private tabs: %1$d open</string>
+    <string name="ui_browser_suggestion_bookmark">Bookmark</string>
+    <string name="ui_browser_suggestion_history">History</string>
+    <string name="ui_browser_security_secure_title">Connection is secure</string>
+    <string name="ui_browser_security_secure_body">Information you send to this site is encrypted.</string>
+    <string name="ui_browser_security_insecure_title">Connection is not secure</string>
+    <string name="ui_browser_security_insecure_body">This site doesn\'t use HTTPS. Avoid entering passwords or payment details.</string>
+    <string name="ui_browser_security_broken_title">Parts of this page are not secure</string>
+    <string name="ui_browser_security_broken_body">The page loads some content over an insecure connection, or its certificate was manually allowed.</string>
+
+    <!-- Overflow menu -->
+    <string name="ui_browser_back">Back</string>
+    <string name="ui_browser_forward">Forward</string>
+    <string name="ui_browser_reload">Reload</string>
+    <string name="ui_browser_stop">Stop loading</string>
+    <string name="ui_browser_add_bookmark">Add bookmark</string>
+    <string name="ui_browser_remove_bookmark">Remove bookmark</string>
+    <string name="ui_browser_new_tab">New tab</string>
+    <string name="ui_browser_new_private_tab">New private tab</string>
+    <string name="ui_browser_history">History</string>
+    <string name="ui_browser_bookmarks">Bookmarks</string>
+    <string name="ui_browser_addons">Add-ons</string>
+    <string name="ui_browser_desktop_site">Desktop site</string>
+    <string name="ui_browser_share">Share page</string>
+    <string name="ui_browser_cast_local">Cast local video / IPTV</string>
+    <string name="ui_browser_settings">Settings</string>
+
+    <!-- Home page -->
+    <string name="ui_home_title">Snapcast</string>
+    <string name="ui_home_tagline">Browse, find the videos on any page, and cast them to your TV.</string>
+    <string name="ui_home_private_title">Private tab</string>
+    <string name="ui_home_private_tagline">History, cookies and site data from this tab are forgotten when you close it.</string>
+    <string name="ui_home_search_hint">Search or enter address</string>
+    <string name="ui_home_speed_dial">Speed dial</string>
+    <string name="ui_home_speed_dial_empty">Bookmark a site and add it to Home to see it here.</string>
+    <string name="ui_home_remove_from_home">Remove from Home</string>
+
+    <!-- Video button and list -->
+    <string name="ui_video_fab_description">Videos found on this page: %1$d</string>
+    <string name="ui_video_tip">Videos found on this page appear here. Tap to cast or play them.</string>
+    <string name="ui_video_tip_got_it">Got it</string>
+    <string name="ui_video_sheet_title">Videos on this page</string>
+    <string name="ui_video_sheet_count">Found: %1$d</string>
+    <string name="ui_video_rescan">Scan again</string>
+    <string name="ui_video_empty_title">No videos found yet</string>
+    <string name="ui_video_detector_starting">Video detection is starting…</string>
+    <string name="ui_video_empty_body">Start playing the video on the page: most sites only load their stream once playback begins. Videos appear here as soon as they are found.</string>
+    <string name="ui_video_cast">Cast</string>
+    <string name="ui_video_play">Play on phone</string>
+    <string name="ui_video_copy">Copy link</string>
+    <string name="ui_video_copied">Link copied</string>
+    <string name="ui_video_open_with">Open with another app</string>
+    <string name="ui_video_no_app">No installed app can open this video</string>
+    <string name="ui_video_queue">Add to queue</string>
+    <string name="ui_video_queued">Added to queue</string>
+    <string name="ui_video_more">More video options</string>
+    <string name="ui_video_cast_direct">Cast directly (no proxy)</string>
+    <string name="ui_video_cast_direct_hint">This site needs cookies or a referer, so casting directly may fail.</string>
+    <string name="ui_video_choose_quality">Choose quality</string>
+    <string name="ui_video_subtitles">Cast with subtitles</string>
+    <string name="ui_video_quality_title">Quality to cast</string>
+    <string name="ui_video_subtitles_title">Subtitles</string>
+    <string name="ui_video_subtitle_track">Track %1$d</string>
+    <string name="ui_video_clip_label">Video link</string>
+    <string name="ui_video_chip_live">LIVE</string>
+    <string name="ui_video_chip_drm">DRM</string>
+    <string name="ui_video_chip_cc">CC</string>
+    <string name="ui_video_drm_note">DRM-protected: can\'t be cast or played</string>
+    <string name="ui_video_drm_title">Protected video</string>
+    <string name="ui_video_drm_message">This video is DRM-protected and can\'t be cast or played here.</string>
+    <string name="ui_video_dialog_ok">OK</string>
+    <string name="ui_video_dialog_cancel">Cancel</string>
+    <string name="ui_video_error_title">Couldn\'t cast this video</string>
+    <string name="ui_video_error_wifi_title">Connect to Wi-Fi</string>
+    <string name="ui_video_error_wifi_message">Your phone and your Chromecast must be on the same Wi-Fi network. Connect the phone to the Wi-Fi your Chromecast uses, then try again.</string>
+    <string name="ui_video_error_unavailable">Casting isn\'t available on this device. Google Play services are required.</string>
+    <string name="ui_video_error_proxy">The local streaming server couldn\'t start. Try another proxy port in Settings, or cast directly.</string>
+    <string name="ui_video_error_unsupported">This stream format isn\'t supported by the Chromecast.</string>
+
+    <!-- Cast mini controller -->
+    <string name="ui_mini_open_controller">Open cast controls</string>
+    <string name="ui_mini_untitled">Casting</string>
+    <string name="ui_mini_casting">Casting</string>
+    <string name="ui_mini_casting_to">Casting to %1$s</string>
+    <string name="ui_mini_play">Play</string>
+    <string name="ui_mini_pause">Pause</string>
+
+    <!-- Long-press menu -->
+    <string name="ui_ctx_open_new_tab">Open in new tab</string>
+    <string name="ui_ctx_open_private_tab">Open in private tab</string>
+    <string name="ui_ctx_copy_link">Copy link</string>
+    <string name="ui_ctx_share_link">Share link</string>
+    <string name="ui_ctx_open_image">Open image in new tab</string>
+    <string name="ui_ctx_copy_image_link">Copy image link</string>
+    <string name="ui_ctx_cast_video">Cast video</string>
+    <string name="ui_ctx_play_video">Play on phone</string>
+    <string name="ui_ctx_copy_video_link">Copy video link</string>
+    <string name="ui_ctx_copied">Copied to clipboard</string>
+    <string name="ui_ctx_clip_label">Link</string>
+
+    <!-- Snackbars -->
+    <string name="ui_event_casting">Casting %1$s</string>
+    <string name="ui_event_queued">Added to queue: %1$s</string>
+    <string name="ui_event_cast_ended">Casting ended</string>
+    <string name="ui_event_choose_device">Choose a Cast device. The video starts once it connects.</string>
+    <string name="ui_event_no_device">Connect to a Cast device first</string>
+    <string name="ui_event_bookmark_added">Bookmark added</string>
+    <string name="ui_event_bookmark_removed">Bookmark removed</string>
+    <string name="ui_event_opened_tab">Opened in a new tab</string>
+    <string name="ui_event_opened_private_tab">Opened in a new private tab</string>
+    <string name="ui_event_switch">Switch</string>
+    <string name="ui_event_download_started">Downloading %1$s…</string>
+    <string name="ui_event_download_finished">Downloaded %1$s</string>
+    <string name="ui_event_download_failed">Download of %1$s failed: %2$s</string>
+    <string name="ui_event_open">Open</string>
+    <string name="ui_event_no_app_for_file">No app can open this file</string>
+    <string name="ui_event_no_app_for_link">No app can open this link</string>
+    <string name="ui_event_tab_crashed">This tab crashed</string>
+    <string name="ui_event_reload">Reload</string>
+
+    <!-- Web prompts -->
+    <string name="ui_prompt_page_says">This page says</string>
+    <string name="ui_prompt_ok">OK</string>
+    <string name="ui_prompt_cancel">Cancel</string>
+    <string name="ui_prompt_allow">Allow</string>
+    <string name="ui_prompt_block">Block</string>
+    <string name="ui_prompt_clear">Clear</string>
+    <string name="ui_prompt_auth_title">Sign in</string>
+    <string name="ui_prompt_username">Username</string>
+    <string name="ui_prompt_password">Password</string>
+    <string name="ui_prompt_show_password">Show password</string>
+    <string name="ui_prompt_hide_password">Hide password</string>
+    <string name="ui_prompt_sign_in">Sign in</string>
+    <string name="ui_prompt_popup_title">Pop-up blocked</string>
+    <string name="ui_prompt_popup_message">This site wants to open a pop-up window.</string>
+    <string name="ui_prompt_leave_title">Leave this page?</string>
+    <string name="ui_prompt_leave_message">This page is asking you to confirm that you want to leave. Changes you made may not be saved.</string>
+    <string name="ui_prompt_leave">Leave</string>
+    <string name="ui_prompt_stay">Stay</string>
+    <string name="ui_prompt_repost_title">Resend information?</string>
+    <string name="ui_prompt_repost_message">This page needs to resend the data you submitted. Repeating it may repeat an action such as a purchase.</string>
+    <string name="ui_prompt_resend">Resend</string>
+    <string name="ui_prompt_share_title">Share</string>
+    <string name="ui_prompt_color_title">Choose a color</string>
+    <string name="ui_prompt_color_hex">Hex color</string>
+    <string name="ui_prompt_time_title">Select time</string>
+    <string name="ui_prompt_perm_title">Permission request</string>
+    <string name="ui_prompt_perm_location">%1$s wants to use your location.</string>
+    <string name="ui_prompt_perm_notifications">%1$s wants to send you notifications.</string>
+    <string name="ui_prompt_perm_storage">%1$s wants to store data in persistent storage.</string>
+    <string name="ui_prompt_perm_xr">%1$s wants to use your virtual reality devices.</string>
+    <string name="ui_prompt_perm_autoplay">%1$s wants to play media with sound automatically.</string>
+    <string name="ui_prompt_perm_drm">%1$s wants to play DRM-controlled content. Protected videos can be watched on the page but can\'t be cast or played in Snapcast\'s player.</string>
+    <string name="ui_prompt_perm_storage_access">%1$s wants to use its cookies and site data while you are on this site.</string>
+    <string name="ui_prompt_perm_local_network">%1$s wants to access devices on your local network.</string>
+    <string name="ui_prompt_perm_other">%1$s is asking for a permission.</string>
+    <string name="ui_prompt_media_both">%1$s wants to use your camera and microphone.</string>
+    <string name="ui_prompt_media_camera">%1$s wants to use your camera.</string>
+    <string name="ui_prompt_media_mic">%1$s wants to use your microphone.</string>
+    <string name="ui_prompt_media_camera_label">Camera</string>
+    <string name="ui_prompt_media_mic_label">Microphone</string>
+
+    <!-- Add-on install / permission prompts -->
+    <string name="ui_addon_prompt_add_title">Add %1$s?</string>
+    <string name="ui_addon_prompt_update_title">%1$s requests new permissions</string>
+    <string name="ui_addon_prompt_permissions_intro">It requires your permission to:</string>
+    <string name="ui_addon_prompt_no_permissions">It doesn\'t require any special permissions.</string>
+    <string name="ui_addon_prompt_allow_private">Allow in private windows</string>
+    <string name="ui_addon_prompt_add">Add</string>
+    <string name="ui_addon_prompt_installing">Installing add-on…</string>
+    <string name="ui_addon_prompt_installed">Installed %1$s</string>
+    <string name="ui_addon_prompt_failed">Failed: %1$s</string>
+    <string name="ui_addon_prompt_close_popup">Close</string>
+</resources>
