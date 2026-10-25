@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>Snapcast</title>
+<defs>
+<linearGradient id="sc-a" gradientUnits="userSpaceOnUse" x1="172.22" y1="30" x2="172.22" y2="298.35"><stop offset="0" stop-color="#3EC0FF"/><stop offset="1" stop-color="#17A6FB"/></linearGradient>
+<linearGradient id="sc-b" gradientUnits="userSpaceOnUse" x1="300.64" y1="122.68" x2="439.76" y2="215.36"><stop offset="0" stop-color="#2898FB"/><stop offset="1" stop-color="#0562F2"/></linearGradient>
+<linearGradient id="sc-c" gradientUnits="userSpaceOnUse" x1="225.73" y1="205.67" x2="403.77" y2="403.56"><stop offset="0" stop-color="#035DEE"/><stop offset="1" stop-color="#1282FA"/></linearGradient>
+<linearGradient id="sc-d" gradientUnits="userSpaceOnUse" x1="439.76" y1="329.24" x2="283.77" y2="482"><stop offset="0" stop-color="#1A97F9"/><stop offset="1" stop-color="#2BB8FE"/></linearGradient>
+<linearGradient id="sc-w" gradientUnits="userSpaceOnUse" x1="72.24" y1="304.58" x2="249.66" y2="482"><stop offset="0" stop-color="#2CC3FB"/><stop offset="0.4" stop-color="#0B8EF7"/><stop offset="1" stop-color="#056BEF"/></linearGradient>
+</defs>
+<path fill="url(#sc-a)" d="M124.34,88.53 L220.09,33.25 A11.26,11.26 0 0,1 231.36,33.25 L434.12,150.32 A11.26,11.26 0 0,1 439.76,160.07 L439.76,257.63 A11.26,11.26 0 0,1 422.86,267.39 L225.73,153.57 L225.73,205.67 L434.12,325.99 A11.26,11.26 0 0,1 439.76,335.75 L439.76,404.75 A11.26,11.26 0 0,1 434.12,414.51 L319.83,480.49 A11.26,11.26 0 0,1 314.2,482 L270.79,482 A198.54,198.54 0 0,0 251.4,396.43 L296.75,370.25 L124.34,270.71 A11.26,11.26 0 0,1 118.71,260.95 L118.71,98.29 A11.26,11.26 0 0,1 124.34,88.53 Z"/>
+<path fill="url(#sc-b)" d="M332.74,91.79 L434.12,150.32 A11.26,11.26 0 0,1 439.76,160.07 L439.76,257.63 A11.26,11.26 0 0,1 422.86,267.39 L225.73,153.57 Z"/>
+<path fill="url(#sc-c)" d="M225.73,205.67 L403.77,308.46 L296.75,370.25 L225.73,329.24 Z"/>
+<path fill="url(#sc-d)" d="M403.77,308.46 L434.12,325.99 A11.26,11.26 0 0,1 439.76,335.75 L439.76,404.75 A11.26,11.26 0 0,1 434.12,414.51 L319.83,480.49 A11.26,11.26 0 0,1 314.2,482 L270.79,482 A198.54,198.54 0 0,0 251.4,396.43 L296.75,370.25 Z"/>
+<path fill="url(#sc-w)" d="M72.24,482 L111.67,482 A39.43,39.43 0 0,0 72.24,442.57 Z M177.85,482 A105.61,105.61 0 0,0 72.24,376.39 L72.24,415.82 A66.18,66.18 0 0,1 138.42,482 Z M244.03,482 A171.79,171.79 0 0,0 72.24,310.21 L72.24,349.64 A132.36,132.36 0 0,1 204.6,482 Z"/>
+</svg>

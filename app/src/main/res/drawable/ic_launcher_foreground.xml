@@ -1,35 +1,76 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Play triangle inside a screen with cast waves (108dp adaptive canvas, 66dp safe zone). -->
+<!-- Snapcast launcher foreground: folded isometric "S" with broadcast arcs. Generated from docs/logo/snapcast-mark.svg geometry; artwork stays inside the 66dp safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Screen outline -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FF4FD1C5"
-        android:strokeWidth="4"
-        android:strokeLineJoin="round"
-        android:pathData="M36,38 L74,38 Q78,38 78,42 L78,66 Q78,70 74,70 L58,70" />
-    <!-- Cast waves in the bottom-left corner -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FF4FD1C5"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M32,52 A20,20 0 0,1 52,72" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FF4FD1C5"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M32,61 A11,11 0 0,1 43,72" />
-    <path
-        android:fillColor="#FF4FD1C5"
-        android:pathData="M32,68 a4,4 0 1,1 0,0.1 z" />
-    <!-- Play triangle -->
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M54,45 L68,54 L54,63 Z" />
+    <!-- Base silhouette, painted with the light facet (left stroke + top facet) -->
+    <path android:pathData="M40.135,32.415 L51.602,25.795 A1.349,1.349 0 0,1 52.951,25.795 L77.234,39.815 A1.349,1.349 0 0,1 77.909,40.983 L77.909,52.666 A1.349,1.349 0 0,1 75.885,53.834 L52.277,40.204 L52.277,46.443 L77.234,60.852 A1.349,1.349 0 0,1 77.909,62.021 L77.909,70.285 A1.349,1.349 0 0,1 77.234,71.453 L63.547,79.355 A1.349,1.349 0 0,1 62.872,79.536 L57.673,79.536 A23.777,23.777 0 0,0 55.351,69.288 L60.782,66.153 L40.135,54.232 A1.349,1.349 0 0,1 39.461,53.064 L39.461,33.584 A1.349,1.349 0 0,1 40.135,32.415 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="45.869"
+                android:startY="25.405"
+                android:endX="45.869"
+                android:endY="57.542"
+                android:startColor="#FF3EC0FF"
+                android:endColor="#FF17A6FB" />
+        </aapt:attr>
+    </path>
+    <!-- Top bar beyond the fold -->
+    <path android:pathData="M65.093,32.805 L77.234,39.815 A1.349,1.349 0 0,1 77.909,40.983 L77.909,52.666 A1.349,1.349 0 0,1 75.885,53.834 L52.277,40.204 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="61.248"
+                android:startY="36.504"
+                android:endX="77.909"
+                android:endY="47.603"
+                android:startColor="#FF2898FB"
+                android:endColor="#FF0562F2" />
+        </aapt:attr>
+    </path>
+    <!-- Spine -->
+    <path android:pathData="M52.277,46.443 L73.598,58.753 L60.782,66.153 L52.277,61.242 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="52.277"
+                android:startY="46.443"
+                android:endX="73.598"
+                android:endY="70.143"
+                android:startColor="#FF035DEE"
+                android:endColor="#FF1282FA" />
+        </aapt:attr>
+    </path>
+    <!-- Bottom bar -->
+    <path android:pathData="M73.598,58.753 L77.234,60.852 A1.349,1.349 0 0,1 77.909,62.021 L77.909,70.285 A1.349,1.349 0 0,1 77.234,71.453 L63.547,79.355 A1.349,1.349 0 0,1 62.872,79.536 L57.673,79.536 A23.777,23.777 0 0,0 55.351,69.288 L60.782,66.153 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="77.909"
+                android:startY="61.242"
+                android:endX="59.228"
+                android:endY="79.536"
+                android:startColor="#FF1A97F9"
+                android:endColor="#FF2BB8FE" />
+        </aapt:attr>
+    </path>
+    <!-- Broadcast arcs (dot + two quarter rings) -->
+    <path android:pathData="M33.896,79.536 L38.618,79.536 A4.722,4.722 0 0,0 33.896,74.814 Z M46.543,79.536 A12.647,12.647 0 0,0 33.896,66.889 L33.896,71.61 A7.926,7.926 0 0,1 41.822,79.536 Z M54.469,79.536 A20.573,20.573 0 0,0 33.896,58.963 L33.896,63.685 A15.851,15.851 0 0,1 49.747,79.536 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="33.896"
+                android:startY="58.288"
+                android:endX="55.143"
+                android:endY="79.536">
+                <item android:offset="0" android:color="#FF2CC3FB" />
+                <item android:offset="0.4" android:color="#FF0B8EF7" />
+                <item android:offset="1" android:color="#FF056BEF" />
+            </gradient>
+        </aapt:attr>
+    </path>
 </vector>
