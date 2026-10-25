@@ -32,7 +32,22 @@ jobs:
         run: node --test 'detection/src/test/js/**/*.test.js'
 
       - name: Unit tests and debug build
-        run: ./gradlew :core:test :proxy:test testDebugUnitTest assembleDebug --continue --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew :core:test :proxy:test testDebugUnitTest assembleDebug --continue 2>&1 | tee build.log
+
+      - name: Summarize build errors
+        if: failure()
+        run: |
+          echo "::group::Compiler errors"
+          grep -E '^e: ' build.log | sort -u | head -n 300 || true
+          echo "::endgroup::"
+          echo "::group::Failed tasks and causes"
+          grep -E -A12 '^\* What went wrong' build.log | head -n 400 || true
+          echo "::endgroup::"
+          echo "::group::Failed tests"
+          grep -E 'FAILED$|Test.*FAILED' build.log | head -n 100 || true
+          echo "::endgroup::"
 
       - name: Upload debug APKs
         if: success()
@@ -41,6 +56,15 @@ jobs:
           name: snapcast-debug-apks
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Upload test reports
         if: always()
