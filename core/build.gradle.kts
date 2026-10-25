@@ -23,3 +23,11 @@ dependencies {
     testImplementation(libs.kotlin.test)
     testImplementation(libs.truth)
 }
+
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showStandardStreams = false
+    }
+}

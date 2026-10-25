@@ -57,6 +57,25 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
 
+      - name: Release build (minified, signed with the debug key)
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease 2>&1 | tee release.log
+
+      - name: Summarize release build errors
+        if: failure()
+        run: |
+          grep -E '^e: |^ERROR|R8|Missing class' release.log | sort -u | head -n 200 || true
+          grep -E -A12 '^\* What went wrong' release.log | head -n 200 || true
+
+      - name: Upload release APKs
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: snapcast-release-apks
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v6
