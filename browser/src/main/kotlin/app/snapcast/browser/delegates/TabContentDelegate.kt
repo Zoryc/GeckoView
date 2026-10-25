@@ -26,7 +26,7 @@ internal class TabContentDelegate(
 
     override fun onTitleChange(session: GeckoSession, title: String?) {
         val tab = host.tabOf(session) ?: return
-        if (tab.isShowingHome) return
+        if (tab.isShowingHome || tab.isDormant) return
         val text = title.orEmpty()
         host.update(tab) { it.copy(title = text) }
         if (title == null) return
@@ -85,10 +85,16 @@ internal class TabContentDelegate(
 
     override fun onExternalResponse(session: GeckoSession, response: WebResponse) {
         val tab = host.tabOf(session)
-        if (tab != null && hooks.interceptResponse(tab.id, response)) return
+        if (tab != null && hooks.interceptResponse(tab.id, response)) {
+            host.onLoadDenied(tab, response.uri)
+            return
+        }
         downloads.enqueue(response, isPrivate = tab?.isPrivate ?: false)
+        if (tab == null) return
+        // Nothing replaces the page: go back to the home page if the download started from there.
+        host.onLoadDenied(tab, response.uri)
         // A link opened in a new tab that turned out to be a download leaves an empty tab behind.
-        if (tab != null && tab.state.parentId != null && !tab.sessionCanGoBack && tab.state.url == ABOUT_BLANK) {
+        if (tab.state.parentId != null && !tab.sessionCanGoBack && tab.state.url == ABOUT_BLANK) {
             host.closeTab(tab.id)
         }
     }

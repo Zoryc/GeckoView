@@ -3,6 +3,8 @@ package app.snapcast.browser.runtime
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.Looper
+import android.os.Process
+import android.util.Log
 import app.snapcast.browser.GeckoRuntimeProvider
 import app.snapcast.data.di.ApplicationScope
 import app.snapcast.data.settings.SettingsRepository
@@ -57,7 +59,13 @@ internal class GeckoRuntimeProviderImpl @Inject constructor(
             .contentBlocking(RuntimeConfig.contentBlocking())
             .webManifest(true)
             .build()
-        return GeckoRuntime.create(context, settings)
+        return GeckoRuntime.create(context, settings).apply {
+            // Gecko's parent process died. A process can only ever create one runtime, so start over.
+            delegate = GeckoRuntime.Delegate {
+                Log.e(TAG, "GeckoRuntime shut down unexpectedly; restarting the app process")
+                Process.killProcess(Process.myPid())
+            }
+        }
     }
 
     private fun followTheme(runtime: GeckoRuntime) {
@@ -72,5 +80,9 @@ internal class GeckoRuntimeProviderImpl @Inject constructor(
                     }
                 }
         }
+    }
+
+    private companion object {
+        const val TAG = "SnapcastBrowser"
     }
 }

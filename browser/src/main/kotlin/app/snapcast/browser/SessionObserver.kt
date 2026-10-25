@@ -9,7 +9,11 @@ import org.mozilla.geckoview.WebResponse
  * Implementations must not inject [BrowserTabs] directly (cycle); inject `dagger.Lazy<BrowserTabs>` instead.
  */
 interface SessionObserver {
-    /** Session created and opened (also for engine-created popup / extension sessions once registered). */
+    /**
+     * Session created and opened. Engine-created popup / extension sessions are reported as soon
+     * as they are registered, just before GeckoView opens them. Also called with the replacement
+     * session after a content crash (preceded by [onSessionClosed] for the crashed one).
+     */
     fun onSessionCreated(tabId: String, session: GeckoSession, isPrivate: Boolean) {}
 
     fun onSessionClosed(tabId: String, session: GeckoSession) {}

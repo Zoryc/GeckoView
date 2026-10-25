@@ -21,6 +21,7 @@ internal object SubtitleText {
         when (fileName?.substringAfterLast('.', "")?.lowercase()) {
             "srt" -> SubtitleFormat.SRT
             "vtt", "webvtt" -> SubtitleFormat.VTT
+            "ttml", "dfxp" -> SubtitleFormat.TTML
             else -> SubtitleFormat.UNKNOWN
         }
 

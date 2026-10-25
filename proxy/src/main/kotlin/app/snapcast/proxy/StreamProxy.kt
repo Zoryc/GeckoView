@@ -1,6 +1,17 @@
 package app.snapcast.proxy
 
+import app.snapcast.proxy.server.HeaderPolicy
+import app.snapcast.proxy.server.ProxyHandler
+import app.snapcast.proxy.server.ProxyHttpServer
+import app.snapcast.proxy.server.ProxyRoutes
+import app.snapcast.proxy.server.Registration
+import app.snapcast.proxy.server.Registry
+import app.snapcast.proxy.server.UpstreamClient
+import app.snapcast.proxy.server.UrlSigner
+import fi.iki.elonen.NanoHTTPD
 import okhttp3.OkHttpClient
+import java.io.IOException
+import java.security.SecureRandom
 
 /**
  * Local HTTP server the receiver streams from. Forwards requests to the real URLs with the captured
@@ -19,6 +30,8 @@ import okhttp3.OkHttpClient
  * `{sig}` is an HMAC over the stream id and the encoded URL with a per-process secret, so the proxy
  * cannot be used as an open relay for the user's cookies.
  *
+ * Registrations survive [stop]/[start]; [clear] removes them.
+ *
  * Thread-safe. [start]/[stop] may be called from any thread.
  */
 class StreamProxy(
@@ -28,27 +41,112 @@ class StreamProxy(
     secret: ByteArray? = null,
     private val log: (String) -> Unit = {},
 ) {
-    val isRunning: Boolean get() = TODO()
+    private val registry = Registry()
+    private val routes: ProxyRoutes
+    private val upstream = UpstreamClient(client)
+    private val handler: ProxyHandler
+    private val lock = Any()
+
+    @Volatile
+    private var server: ProxyHttpServer? = null
+
+    init {
+        val key = secret?.takeIf { it.isNotEmpty() } ?: ByteArray(SECRET_BYTES).also { SecureRandom().nextBytes(it) }
+        val signer = UrlSigner(key)
+        routes = ProxyRoutes(signer)
+        handler = ProxyHandler(registry, routes, signer, upstream, log)
+    }
+
+    val isRunning: Boolean get() = server?.isAlive == true
 
     /** Bound port while running, otherwise -1. */
-    val port: Int get() = TODO()
+    val port: Int get() = server?.takeIf { it.isAlive }?.listeningPort ?: -1
 
     /** Starts the server (no-op when already running). Throws IOException when the port cannot be bound. */
-    fun start(): Unit = TODO()
+    fun start() {
+        synchronized(lock) {
+            if (server?.isAlive == true) return
+            server?.stop()
+            server = null
+            server = try {
+                bind(config.port)
+            } catch (e: IOException) {
+                if (!config.fallbackToEphemeralPort || config.port == 0) throw e
+                log("Port ${config.port} unavailable (${e.message}); binding an ephemeral port")
+                bind(0)
+            }
+            log("Proxy listening on ${config.bindAddress}:$port")
+        }
+    }
 
-    fun stop(): Unit = TODO()
+    /** Stops the server: closes the listening socket and every client connection and cancels upstream calls. */
+    fun stop() {
+        synchronized(lock) {
+            server?.stop()
+            server = null
+            upstream.cancelAll()
+        }
+    }
 
-    fun registerStream(request: ProxyStreamRequest): ProxiedStream = TODO()
+    fun registerStream(request: ProxyStreamRequest): ProxiedStream {
+        val policy = HeaderPolicy(request.headers, request.url, request.cookiesByHost, config.defaultUserAgent)
+        val id = registry.add(Registration.Stream(request, policy))
+        val name = ProxyRoutes.streamName(request.url, ProxyRoutes.typeOf(request.url, request.typeHint))
+        return ProxiedStream(id, routes.stream(id, name))
+    }
 
-    fun registerLocal(source: LocalSource, fileNameHint: String): ProxiedStream = TODO()
+    fun registerLocal(source: LocalSource, fileNameHint: String): ProxiedStream {
+        val id = registry.add(Registration.Local(source))
+        val name = ProxyRoutes.sanitizeName(fileNameHint) ?: "media"
+        return ProxiedStream(id, routes.local(id, name))
+    }
 
-    fun registerSubtitle(source: SubtitleSource): ProxiedSubtitle = TODO()
+    fun registerSubtitle(source: SubtitleSource): ProxiedSubtitle {
+        val policy = (source as? SubtitleSource.Remote)?.let {
+            HeaderPolicy(it.headers, it.url, emptyMap(), config.defaultUserAgent)
+        }
+        val id = registry.add(Registration.Subtitle(source, policy))
+        return ProxiedSubtitle(id, routes.subtitle(id))
+    }
 
-    fun unregister(id: String): Unit = TODO()
+    fun unregister(id: String) {
+        registry.remove(id)
+    }
 
     /** Removes every registration. */
-    fun clear(): Unit = TODO()
+    fun clear() {
+        registry.clear()
+    }
 
-    /** "http://[host]:[port][path]" (IPv6 hosts are bracketed). */
-    fun url(host: String, path: String): String = TODO()
+    /** "http://[host]:[port][path]" (IPv6 hosts are bracketed). Uses the configured port while stopped. */
+    fun url(host: String, path: String): String {
+        val trimmed = host.trim()
+        val authorityHost = if (trimmed.contains(':') && !trimmed.startsWith("[")) {
+            // RFC 6874: a zone id separator inside brackets is written "%25".
+            "[" + trimmed.replace("%", "%25") + "]"
+        } else {
+            trimmed
+        }
+        val actualPort = port.takeIf { it > 0 } ?: config.port
+        val normalizedPath = if (path.startsWith("/")) path else "/$path"
+        return "http://$authorityHost:$actualPort$normalizedPath"
+    }
+
+    private fun bind(port: Int): ProxyHttpServer {
+        // NanoHTTPD binds on its listener thread and would wait forever if the address were rejected there.
+        if (port !in 0..MAX_PORT) throw IOException("Invalid port $port")
+        val created = ProxyHttpServer(config.bindAddress.trim().ifEmpty { null }, port, handler)
+        try {
+            created.start(NanoHTTPD.SOCKET_READ_TIMEOUT, true)
+        } catch (e: IOException) {
+            created.stop()
+            throw e
+        }
+        return created
+    }
+
+    private companion object {
+        const val SECRET_BYTES = 32
+        const val MAX_PORT = 65535
+    }
 }

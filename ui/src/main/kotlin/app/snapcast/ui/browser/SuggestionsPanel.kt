@@ -68,7 +68,11 @@ internal fun SuggestionsPanel(
                             Icon(
                                 imageVector = if (suggestion.isBookmark) Icons.Filled.Bookmark else Icons.Filled.History,
                                 contentDescription = stringResource(
-                                    if (suggestion.isBookmark) R.string.ui_browser_suggestion_bookmark else R.string.ui_browser_suggestion_history,
+                                    if (suggestion.isBookmark) {
+                                        R.string.ui_browser_suggestion_bookmark
+                                    } else {
+                                        R.string.ui_browser_suggestion_history
+                                    },
                                 ),
                             )
                         },

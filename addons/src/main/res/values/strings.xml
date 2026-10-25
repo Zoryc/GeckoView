@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Permission prompt: host permissions (same wording as Firefox) -->
+    <string name="addons_perm_all_sites">Access your data for all websites</string>
+    <string name="addons_perm_domain">Access your data for sites in the %1$s domain</string>
+    <plurals name="addons_perm_other_domains">
+        <item quantity="one">Access your data in %1$d other domain</item>
+        <item quantity="other">Access your data in %1$d other domains</item>
+    </plurals>
+    <string name="addons_perm_site">Access your data for %1$s</string>
+    <plurals name="addons_perm_other_sites">
+        <item quantity="one">Access your data on %1$d other site</item>
+        <item quantity="other">Access your data on %1$d other sites</item>
+    </plurals>
+
+    <!-- Permission prompt: API permissions (permissions Firefox stays silent about are not listed) -->
+    <string name="addons_perm_bookmarks">Read and modify bookmarks</string>
+    <string name="addons_perm_browser_settings">Read and modify browser settings</string>
+    <string name="addons_perm_browsing_data">Clear recent browsing history, cookies, and related data</string>
+    <string name="addons_perm_clipboard_read">Get data from the clipboard</string>
+    <string name="addons_perm_clipboard_write">Input data to the clipboard</string>
+    <string name="addons_perm_declarative_net_request">Block content on any page</string>
+    <string name="addons_perm_declarative_net_request_feedback">Read your browsing history</string>
+    <string name="addons_perm_devtools">Extend developer tools to access your data in open tabs</string>
+    <string name="addons_perm_dns">Access IP address and hostname information</string>
+    <string name="addons_perm_downloads">Download files and read and modify the browser\'s download history</string>
+    <string name="addons_perm_downloads_open">Open files downloaded to your device</string>
+    <string name="addons_perm_find">Read the text of all open tabs</string>
+    <string name="addons_perm_geolocation">Access your location</string>
+    <string name="addons_perm_history">Access browsing history</string>
+    <string name="addons_perm_management">Monitor extension usage and manage themes</string>
+    <string name="addons_perm_native_messaging">Exchange messages with programs other than this browser</string>
+    <string name="addons_perm_network_requests">Monitor and block network requests</string>
+    <string name="addons_perm_notifications">Display notifications to you</string>
+    <string name="addons_perm_pkcs11">Provide cryptographic authentication services</string>
+    <string name="addons_perm_privacy">Read and modify privacy settings</string>
+    <string name="addons_perm_proxy">Control browser proxy settings</string>
+    <string name="addons_perm_sessions">Access recently closed tabs</string>
+    <string name="addons_perm_tabs">Access browser tabs</string>
+    <string name="addons_perm_tab_hide">Hide and show browser tabs</string>
+    <string name="addons_perm_trial_ml">Download and run AI models on your device</string>
+    <string name="addons_perm_user_scripts">Allow unverified third-party scripts to access your data</string>
+    <string name="addons_perm_web_navigation">Access browser activity during navigation</string>
+
+    <!-- Permission prompt: data the developer says the add-on collects -->
+    <string name="addons_data_authentication_info">Share authentication information with the extension developer</string>
+    <string name="addons_data_bookmarks_info">Share bookmarks information with the extension developer</string>
+    <string name="addons_data_browsing_activity">Share browsing activity with the extension developer</string>
+    <string name="addons_data_financial_and_payment_info">Share financial and payment information with the extension developer</string>
+    <string name="addons_data_health_info">Share health information with the extension developer</string>
+    <string name="addons_data_location_info">Share location information with the extension developer</string>
+    <string name="addons_data_personal_communications">Share personal communications with the extension developer</string>
+    <string name="addons_data_personally_identifying_info">Share personally identifying information with the extension developer</string>
+    <string name="addons_data_search_terms">Share search terms with the extension developer</string>
+    <string name="addons_data_technical_and_interaction">Share technical and interaction data with the extension developer</string>
+    <string name="addons_data_website_activity">Share website activity with the extension developer</string>
+    <string name="addons_data_website_content">Share website content with the extension developer</string>
+
+    <!-- Why an add-on is disabled -->
+    <string name="addons_disabled_blocklisted">Blocked for violating Mozilla\'s policies</string>
+    <string name="addons_disabled_soft_blocklisted">Restricted for violating Mozilla\'s policies</string>
+    <string name="addons_disabled_signature">Not signed: this add-on could not be verified</string>
+    <string name="addons_disabled_incompatible">Not compatible with this version of the browser</string>
+    <string name="addons_disabled_app">Disabled by the app</string>
+    <string name="addons_disabled_user">Disabled</string>
+
+    <!-- Installation errors -->
+    <string name="addons_error_network">Download failed</string>
+    <string name="addons_error_corrupt">The add-on file is corrupt</string>
+    <string name="addons_error_file_access">The add-on file could not be read</string>
+    <string name="addons_error_not_signed">This add-on could not be verified (only signed add-ons from addons.mozilla.org can be installed)</string>
+    <string name="addons_error_invalid_domain">Add-ons can\'t be installed from this site</string>
+    <string name="addons_error_blocklisted">This add-on is blocked for violating Mozilla\'s policies</string>
+    <string name="addons_error_soft_blocked">This add-on is restricted for violating Mozilla\'s policies</string>
+    <string name="addons_error_incompatible">This add-on is not compatible with this version of the browser</string>
+    <string name="addons_error_unsupported_type">This type of add-on is not supported</string>
+    <string name="addons_error_admin_only">This add-on can only be installed by an administrator</string>
+    <string name="addons_error_postponed">The installation will finish the next time the app starts</string>
+    <string name="addons_error_unsupported_source">Add-ons can only be installed from https links or local files</string>
+    <string name="addons_error_unknown">The add-on could not be installed</string>
+
+    <!-- Management errors -->
+    <string name="addons_error_enable">Couldn\'t enable %1$s</string>
+    <string name="addons_error_disable">Couldn\'t disable %1$s</string>
+    <string name="addons_error_uninstall">Couldn\'t remove %1$s</string>
+    <string name="addons_error_private_browsing">Couldn\'t change private browsing access for %1$s</string>
+</resources>

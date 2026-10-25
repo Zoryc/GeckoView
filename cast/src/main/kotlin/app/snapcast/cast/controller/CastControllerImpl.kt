@@ -293,10 +293,19 @@ internal class CastControllerImpl @Inject constructor(
 
     // region Cast button and device chooser
 
-    override fun createCastButton(context: Context): View = when (castContextProvider.state.value) {
-        CastContextProvider.State.Unavailable -> View(context).apply { visibility = View.GONE }
-        is CastContextProvider.State.Ready -> MediaRouteButton(context).also { setUpCastButton(context, it) }
-        CastContextProvider.State.Initializing -> MediaRouteButton(context).also { button ->
+    override fun createCastButton(context: Context): View {
+        val state = castContextProvider.state.value
+        if (state == CastContextProvider.State.Unavailable) return hiddenView(context)
+        val button = try {
+            MediaRouteButton(context)
+        } catch (e: RuntimeException) {
+            // MediaRouteButton needs an AppCompat-themed context.
+            Log.w(TAG, "Cast button unavailable in this context", e)
+            return hiddenView(context)
+        }
+        if (state is CastContextProvider.State.Ready) {
+            setUpCastButton(context, button)
+        } else {
             button.visibility = View.GONE
             scope.launch(Dispatchers.Main.immediate) {
                 if (castContextProvider.await() != null && setUpCastButton(context, button)) {
@@ -304,7 +313,10 @@ internal class CastControllerImpl @Inject constructor(
                 }
             }
         }
+        return button
     }
+
+    private fun hiddenView(context: Context): View = View(context).apply { visibility = View.GONE }
 
     override fun showDeviceChooser(activity: FragmentActivity) {
         val castContext = castContextProvider.castContextOrNull
@@ -500,8 +512,9 @@ internal class CastControllerImpl @Inject constructor(
             throw CastFailure(CastErrorKind.LOAD_FAILED, string(R.string.cast_error_subtitle_read))
         }
         return try {
-            val format = listOf(SubtitleConverter.sniffFormat(text), declared, SubtitleText.formatFromFileName(fileName))
-                .firstOrNull { it == SubtitleFormat.VTT || it == SubtitleFormat.SRT }
+            val sniffed = SubtitleConverter.sniffFormat(text)
+            val candidates = listOf(sniffed, declared, SubtitleText.formatFromFileName(fileName))
+            val format = candidates.firstOrNull { it != SubtitleFormat.UNKNOWN }
                 ?: throw CastFailure(CastErrorKind.UNSUPPORTED, string(R.string.cast_error_subtitle_format))
             SubtitleConverter.toVtt(text, format)
         } catch (e: RuntimeException) {

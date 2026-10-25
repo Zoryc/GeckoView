@@ -86,7 +86,7 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
         rawByTab.value[tabId]?.firstOrNull { it.id == videoId }
 
     override fun requestRescan(tabId: String) = onMain {
-        tabs[tabId]?.port?.let(::postRescan)
+        tabs[tabId]?.rescanPort()?.let(::postRescan)
     }
 
     override fun clearTab(tabId: String) = onMain {
@@ -144,7 +144,7 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
 
     override fun onPortConnected(tabId: String, isPrivate: Boolean, port: WebExtension.Port) {
         val tab = tabFor(tabId, isPrivate)
-        tab.port = port
+        tab.onPortConnected(port)
         // Answering right away tells the content script that the app listens: it then replays what it
         // posted before this delegate was attached. The rescan also catches elements found meanwhile.
         mainHandler.post {
@@ -153,8 +153,7 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
     }
 
     override fun onPortDisconnected(tabId: String, port: WebExtension.Port) {
-        val tab = tabs[tabId] ?: return
-        if (tab.port === port) tab.port = null
+        tabs[tabId]?.onPortDisconnected(port)
     }
 
     override fun onDetectorMessage(tabId: String, isPrivate: Boolean, message: DetectorMessage) {

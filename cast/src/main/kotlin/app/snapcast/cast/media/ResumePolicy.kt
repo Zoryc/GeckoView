@@ -17,6 +17,11 @@ internal object ResumePolicy {
     }
 
     /** Positions are kept only for finite, non-private media while resuming is enabled. */
-    fun shouldSave(resumeEnabled: Boolean, isLive: Boolean, isPrivate: Boolean, positionMs: Long, durationMs: Long): Boolean =
-        resumeEnabled && !isLive && !isPrivate && durationMs > 0 && positionMs in 0..durationMs
+    fun shouldSave(
+        resumeEnabled: Boolean,
+        isLive: Boolean,
+        isPrivate: Boolean,
+        positionMs: Long,
+        durationMs: Long,
+    ): Boolean = resumeEnabled && !isLive && !isPrivate && durationMs > 0 && positionMs in 0..durationMs
 }

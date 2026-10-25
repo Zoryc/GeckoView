@@ -34,13 +34,13 @@ internal class TabNavigationDelegate(
     }
 
     override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
-        val tab = host.tabOf(session) ?: return
+        val tab = host.tabOf(session)?.takeUnless { it.isDormant } ?: return
         tab.sessionCanGoBack = canGoBack
         host.update(tab) { it }
     }
 
     override fun onCanGoForward(session: GeckoSession, canGoForward: Boolean) {
-        val tab = host.tabOf(session) ?: return
+        val tab = host.tabOf(session)?.takeUnless { it.isDormant } ?: return
         host.update(tab) { it.copy(canGoForward = canGoForward) }
     }
 

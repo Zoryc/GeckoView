@@ -97,10 +97,11 @@ internal object CastMediaFactory {
 
     private fun remoteSubtitleSource(video: DetectedVideo, track: SubtitleTrack): SubtitleSource? {
         if (!CastMediaRules.isProxyableSubtitle(track)) return null
+        // An undeclared format stays UNKNOWN: the proxy then sniffs the content, which beats guessing from the URL.
         return SubtitleSource.Remote(
             url = track.url,
             headers = subtitleHeaders(video, track.url),
-            format = CastMediaRules.subtitleFormat(track),
+            format = track.format,
         )
     }
 

@@ -163,9 +163,9 @@ internal class ChromecastTarget @Inject constructor(
         val remote = client ?: return@withContext notConnected()
         val index = startIndex.coerceIn(items.indices)
         val start = startPositionMs.coerceAtLeast(0)
-        val builder = MediaLoadRequestData.Builder()
-            .setAutoplay(autoplay)
-            .setCurrentTime(start)
+        val builder = MediaLoadRequestData.Builder().setAutoplay(autoplay)
+        // Without a position the receiver starts at its default: the beginning, or the live edge.
+        if (start > 0) builder.setCurrentTime(start)
         if (items.size == 1) {
             builder.setMediaInfo(MediaInfoMapper.toMediaInfo(items[index]))
         } else {

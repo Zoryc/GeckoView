@@ -18,8 +18,9 @@ import org.junit.Test
 class CastMediaFactoryTest {
 
     private val english = SubtitleTrack(id = "en", url = "https://media.example.com/en.vtt", label = "English", language = "en")
-    private val french = SubtitleTrack(id = "fr", url = "https://subs.example.org/fr.srt", language = "fr")
+    private val french = SubtitleTrack(id = "fr", url = "https://subs.example.org/fr.srt", language = "fr", format = SubtitleFormat.SRT)
     private val ttml = SubtitleTrack(id = "de", url = "https://media.example.com/de.ttml", language = "de")
+    private val blob = SubtitleTrack(id = "blob", url = "blob:https://www.example.com/5f2c", language = "es")
 
     private val hls = DetectedVideo(
         id = "v1",
@@ -31,7 +32,7 @@ class CastMediaFactoryTest {
         cookiesByHost = mapOf("subs.example.org" to "sub=1"),
         durationSec = 596.5,
         posterUrl = "https://media.example.com/poster.jpg",
-        subtitles = listOf(english, french, ttml),
+        subtitles = listOf(english, french, blob, ttml),
         hlsFragmentedMp4 = true,
     )
 
@@ -69,12 +70,17 @@ class CastMediaFactoryTest {
         val proxy = FakeMediaProxy()
         val media = CastMediaFactory.proxied(hls, variant = null, subtitle = french, proxy = proxy)
 
-        assertThat(media.textTracks.map { it.trackId }).containsExactly(1L, 2L).inOrder()
+        assertThat(media.textTracks.map { it.trackId }).containsExactly(1L, 2L, 4L).inOrder()
         assertThat(media.textTracks.map { it.url })
-            .containsExactly("http://192.168.1.20:8642/sub/sub1.vtt", "http://192.168.1.20:8642/sub/sub2.vtt")
+            .containsExactly(
+                "http://192.168.1.20:8642/sub/sub1.vtt",
+                "http://192.168.1.20:8642/sub/sub2.vtt",
+                "http://192.168.1.20:8642/sub/sub3.vtt",
+            )
             .inOrder()
         assertThat(media.textTracks[0].name).isEqualTo("English")
         assertThat(media.textTracks[1].language).isEqualTo("fr")
+        assertThat(media.textTracks[2].name).isEqualTo("de")
         assertThat(media.activeTextTrackId).isEqualTo(2L)
     }
 
@@ -87,10 +93,11 @@ class CastMediaFactoryTest {
         val sameHost = sources.single { it.url == english.url }
         val otherHost = sources.single { it.url == french.url }
         assertThat(sameHost.headers).containsEntry("Cookie", "sid=42")
-        assertThat(sameHost.format).isEqualTo(SubtitleFormat.VTT)
+        assertThat(sameHost.format).isEqualTo(SubtitleFormat.UNKNOWN)
         assertThat(otherHost.headers).containsEntry("Cookie", "sub=1")
         assertThat(otherHost.headers).containsEntry("Referer", "https://www.example.com/watch")
         assertThat(otherHost.format).isEqualTo(SubtitleFormat.SRT)
+        assertThat(sources.single { it.url == ttml.url }.format).isEqualTo(SubtitleFormat.UNKNOWN)
     }
 
     @Test
@@ -98,8 +105,8 @@ class CastMediaFactoryTest {
         val extra = SubtitleTrack(id = "x", url = "https://media.example.com/extra.vtt")
         val media = CastMediaFactory.proxied(hls, variant = null, subtitle = extra, proxy = FakeMediaProxy())
 
-        assertThat(media.textTracks.map { it.trackId }).containsExactly(1L, 2L, 4L).inOrder()
-        assertThat(media.activeTextTrackId).isEqualTo(4L)
+        assertThat(media.textTracks.map { it.trackId }).containsExactly(1L, 2L, 4L, 5L).inOrder()
+        assertThat(media.activeTextTrackId).isEqualTo(5L)
     }
 
     @Test

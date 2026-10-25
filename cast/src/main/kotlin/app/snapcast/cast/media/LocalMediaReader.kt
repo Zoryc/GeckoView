@@ -56,9 +56,10 @@ internal class LocalMediaReader @Inject constructor(
             throw IOException("No permission to read $uri", e)
         }
         val length = descriptorLength.takeIf { it >= 0 } ?: querySize
-        val mimeType = mimeTypeHint?.takeIf { it.isNotBlank() }
-            ?: resolver.getType(uri)
-            ?: DEFAULT_VIDEO_MIME_TYPE
+        val mimeType = CastMediaRules.localMimeType(
+            fileName = displayName ?: uri.lastPathSegment,
+            reportedMime = mimeTypeHint?.takeIf { it.isNotBlank() } ?: resolver.getType(uri),
+        )
         return LocalFile(
             source = ContentUriSource(resolver, uri, mimeType, length),
             displayName = displayName,
@@ -131,7 +132,6 @@ internal class LocalMediaReader @Inject constructor(
     }
 
     private companion object {
-        const val DEFAULT_VIDEO_MIME_TYPE = "video/mp4"
         const val BUFFER_SIZE = 16 * 1024
     }
 }

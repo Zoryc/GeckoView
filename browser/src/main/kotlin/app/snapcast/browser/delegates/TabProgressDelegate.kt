@@ -22,7 +22,7 @@ internal class TabProgressDelegate(
 
     override fun onPageStop(session: GeckoSession, success: Boolean) {
         val tab = host.tabOf(session) ?: return
-        host.update(tab) { it.copy(isLoading = false, progress = if (it.isLoading) 100 else it.progress) }
+        host.onPageStopped(tab)
     }
 
     override fun onProgressChange(session: GeckoSession, progress: Int) {
@@ -32,7 +32,7 @@ internal class TabProgressDelegate(
     }
 
     override fun onSecurityChange(session: GeckoSession, securityInfo: SecurityInformation) {
-        val tab = host.tabOf(session) ?: return
+        val tab = host.tabOf(session)?.takeUnless { it.isDormant } ?: return
         val pageUrl = securityInfo.origin?.takeIf { UriParts.schemeOf(it) != null } ?: tab.state.url
         tab.securityOrigin = UriParts.originOf(pageUrl)
         val level = if (tab.isShowingHome) {

@@ -320,7 +320,11 @@ private fun VideoItem(video: DetectedVideo, actions: VideoActions, modifier: Mod
                     enabled = !drm,
                 ) {
                     Icon(
-                        imageVector = if (queued) Icons.AutoMirrored.Filled.PlaylistAddCheck else Icons.AutoMirrored.Filled.PlaylistAdd,
+                        imageVector = if (queued) {
+                            Icons.AutoMirrored.Filled.PlaylistAddCheck
+                        } else {
+                            Icons.AutoMirrored.Filled.PlaylistAdd
+                        },
                         contentDescription = stringResource(if (queued) R.string.ui_video_queued else R.string.ui_video_queue),
                     )
                 }

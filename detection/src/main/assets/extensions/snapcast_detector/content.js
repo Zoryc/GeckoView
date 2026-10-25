@@ -11,7 +11,8 @@
  *
  * Messages posted before the app has attached its port delegate may be lost, so the top frame keeps a
  * log of everything it sent and replays it once the app answers on the port (the app posts a rescan
- * command right after connecting) and after a reconnection. The app de-duplicates by URL.
+ * command right after connecting), after a reconnection and on every later rescan command. The app
+ * de-duplicates by URL.
  */
 (function (root) {
   'use strict';
@@ -25,6 +26,7 @@
   const SCAN_DEBOUNCE_MS = 300;
   const SCAN_MAX_WAIT_MS = 1500;
   const BROADCAST_ECHO_MS = 1500;
+  const HELLO_RETRIES = 4;
   /** A frame stops reporting new URLs past this many (pathological pages). */
   const MAX_REPORTED_URLS = 300;
 
@@ -196,7 +198,8 @@
 
   /**
    * The top frame's native-messaging port with reconnection and replay. [options]: hello() builds the
-   * hello message, onCommand(command) receives app commands; setTimeout/clearTimeout for tests.
+   * hello message, onCommand(command, confirming) receives app commands (confirming is true for the
+   * first message on a port, which already triggered a replay); setTimeout/clearTimeout for tests.
    */
   function createNativeLink(runtime, options) {
     const opts = options || {};
@@ -245,13 +248,14 @@
     function onPortMessage(source, message) {
       if (source !== port) return;
       attempts = 0;
-      if (!confirmed) {
+      const confirming = !confirmed;
+      if (confirming) {
         confirmed = true;
         replay(source);
       }
       if (message && typeof message === 'object' && typeof message.type === 'string') {
         try {
-          onCommand(message);
+          onCommand(message, confirming);
         } catch (ignored) {
           // Commands are best effort.
         }
@@ -305,6 +309,10 @@
         if (!message || typeof message.type !== 'string') return;
         remember(message);
         if (port) post(port, message);
+      },
+      /** Posts hello, page and every logged message again on the current port. */
+      replay() {
+        if (port) replay(port);
       },
       /** Connects again now (page restored from the back/forward cache, tab shown again). */
       reconnect() {
@@ -464,16 +472,28 @@
       scheduleScan(50);
     }
 
-    function onCommand(command) {
+    /**
+     * A rescan rescans every frame and replays what was sent so far (the app may have reset the list
+     * for a navigation that did not replace this document, such as a download link).
+     */
+    function onCommand(command, confirming) {
       if (command.type !== 'rescan') return;
+      if (!confirming) link.replay();
       rescan(false);
       sendToBackground({ kind: M.RESCAN_ALL });
     }
 
-    function sayHello() {
+    /**
+     * Tells the background page this document's top frame is ready and relays what it buffered. The
+     * background always answers; no answer means it was not listening yet, so we ask again.
+     */
+    function sayHello(attempt) {
+      const tries = attempt || 0;
       sendToBackground({ kind: M.HELLO, url: location(), title: text(doc.title) }).then((reply) => {
         if (reply && Array.isArray(reply.messages)) {
           for (const message of reply.messages) link.send(message);
+        } else if (tries < HELLO_RETRIES) {
+          setTimer(() => sayHello(tries + 1), 1000 * (tries + 1));
         }
       }, noop);
     }

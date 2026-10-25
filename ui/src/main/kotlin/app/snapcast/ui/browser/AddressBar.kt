@@ -56,8 +56,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -83,7 +81,6 @@ import app.snapcast.ui.theme.SnapcastThemeExtras
 internal class AddressBarState {
     var editing by mutableStateOf(false)
     var value by mutableStateOf(TextFieldValue(""))
-    val focusRequester = FocusRequester()
 }
 
 /**
@@ -229,7 +226,6 @@ private fun AddressField(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .focusRequester(state.focusRequester)
                     .onFocusChanged { focus -> if (focus.isFocused != state.editing) state.editing = focus.isFocused },
                 singleLine = true,
                 textStyle = textStyle,

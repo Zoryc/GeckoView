@@ -45,6 +45,34 @@ internal object CastMediaRules {
         }
     }
 
+    private val LOCAL_MIME_BY_EXTENSION = mapOf(
+        "mp4" to "video/mp4",
+        "m4v" to "video/mp4",
+        "webm" to "video/webm",
+        "mkv" to "video/x-matroska",
+        "mov" to "video/quicktime",
+        "ts" to "video/mp2t",
+        "3gp" to "video/3gpp",
+        "mp3" to "audio/mpeg",
+        "m4a" to "audio/mp4",
+        "aac" to "audio/aac",
+        "ogg" to "audio/ogg",
+        "opus" to "audio/ogg",
+        "flac" to "audio/flac",
+        "wav" to "audio/wav",
+    )
+
+    /**
+     * Content type for a file on the phone: the provider's MIME type when it names a concrete audio/video
+     * type (many report "application/octet-stream"), else the one implied by the file extension.
+     */
+    fun localMimeType(fileName: String?, reportedMime: String?): String {
+        val reported = reportedMime?.substringBefore(';')?.trim()?.takeIf { it.isNotEmpty() }
+        if (reported != null && isConcreteMediaType(reported.lowercase())) return reported
+        val extension = fileName?.substringAfterLast('.', "")?.lowercase()
+        return LOCAL_MIME_BY_EXTENSION[extension] ?: FALLBACK_CONTENT_TYPE
+    }
+
     private fun isConcreteMediaType(mime: String): Boolean =
         (mime.startsWith("video/") || mime.startsWith("audio/")) && !mime.endsWith("/*")
 
@@ -71,9 +99,8 @@ internal object CastMediaRules {
     fun isDirectSubtitle(track: SubtitleTrack): Boolean =
         !track.isLocal && UrlUtils.isHttp(track.url) && subtitleFormat(track) == SubtitleFormat.VTT
 
-    /** Remote subtitles the proxy can fetch and serve as WebVTT (TTML cannot be converted). */
-    fun isProxyableSubtitle(track: SubtitleTrack): Boolean =
-        !track.isLocal && UrlUtils.isHttp(track.url) && subtitleFormat(track) != SubtitleFormat.TTML
+    /** Remote subtitles the proxy can fetch and serve as WebVTT (it converts SRT and TTML). */
+    fun isProxyableSubtitle(track: SubtitleTrack): Boolean = !track.isLocal && UrlUtils.isHttp(track.url)
 
     /** Declared format, or the one implied by the URL extension when undeclared. */
     fun subtitleFormat(track: SubtitleTrack): SubtitleFormat =

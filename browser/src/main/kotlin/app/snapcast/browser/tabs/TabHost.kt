@@ -20,10 +20,13 @@ internal interface TabHost {
     /** A new top-level document started loading. */
     fun onPageStarted(tab: TabEntry, url: String)
 
+    /** The top-level load finished (successfully or not). */
+    fun onPageStopped(tab: TabEntry)
+
     /** A top-level location committed (handles the built-in home page). */
     fun onLocationCommitted(tab: TabEntry, url: String)
 
-    /** A top-level load was cancelled by an interceptor or handed to another app. */
+    /** A top-level load produced no page: cancelled by an interceptor, handed to another app, or a download. */
     fun onLoadDenied(tab: TabEntry, url: String)
 
     fun onSessionStateChanged(tab: TabEntry, json: String?)

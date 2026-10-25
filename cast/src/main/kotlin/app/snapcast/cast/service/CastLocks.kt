@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
+import android.os.SystemClock
 
 /**
  * Wi-Fi and CPU locks held while casting, so the proxy keeps serving the receiver with the screen off.
@@ -22,15 +23,29 @@ internal class CastLocks(context: Context) {
             ?.apply { setReferenceCounted(false) }
     }.getOrNull()
 
+    private var wakeLockAcquiredAt = 0L
+
     fun acquire() {
         runCatching { wifiLock?.takeUnless { it.isHeld }?.acquire() }
-        runCatching { wakeLock?.acquire(WAKE_LOCK_TIMEOUT_MS) }
+        acquireWakeLock()
     }
 
-    /** Extends the wake lock's timeout (it is time-limited so a lost release cannot drain the battery). */
+    /**
+     * Extends the wake lock's timeout while playback continues (it is time-limited so a lost release cannot
+     * drain the battery). Cheap to call often: it only renews once half of the timeout has passed.
+     */
     fun refresh() {
         val lock = wakeLock ?: return
-        if (lock.isHeld) runCatching { lock.acquire(WAKE_LOCK_TIMEOUT_MS) }
+        val renewDue = SystemClock.elapsedRealtime() - wakeLockAcquiredAt > WAKE_LOCK_TIMEOUT_MS / 2
+        if (lock.isHeld && renewDue) acquireWakeLock()
+    }
+
+    private fun acquireWakeLock() {
+        val lock = wakeLock ?: return
+        runCatching {
+            lock.acquire(WAKE_LOCK_TIMEOUT_MS)
+            wakeLockAcquiredAt = SystemClock.elapsedRealtime()
+        }
     }
 
     fun release() {

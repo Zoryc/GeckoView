@@ -42,10 +42,14 @@ internal class CastNotificationFactory(private val service: Service) {
     /** Opens the app on the expanded cast controller. */
     fun sessionActivity(): PendingIntent? = contentIntent
 
-    fun build(content: CastNotificationContent, token: MediaSessionCompat.Token): Notification {
+    fun build(content: CastNotificationContent, token: MediaSessionCompat.Token?): Notification {
         val actions = ArrayList<NotificationCompat.Action>()
         if (content.isSeekable) {
-            actions += action(R.drawable.ic_cast_replay_10, R.string.cast_action_rewind, CastPlaybackService.ACTION_REWIND)
+            actions += action(
+                R.drawable.ic_cast_replay_10,
+                R.string.cast_action_rewind,
+                CastPlaybackService.ACTION_REWIND,
+            )
         }
         val playPauseIndex = actions.size
         actions += if (content.isPlaying) {
@@ -54,7 +58,11 @@ internal class CastNotificationFactory(private val service: Service) {
             action(R.drawable.ic_cast_play, R.string.cast_action_play, CastPlaybackService.ACTION_TOGGLE_PLAYBACK)
         }
         if (content.isSeekable) {
-            actions += action(R.drawable.ic_cast_forward_10, R.string.cast_action_forward, CastPlaybackService.ACTION_FORWARD)
+            actions += action(
+                R.drawable.ic_cast_forward_10,
+                R.string.cast_action_forward,
+                CastPlaybackService.ACTION_FORWARD,
+            )
         }
         val stopIndex = actions.size
         actions += action(R.drawable.ic_cast_stop, R.string.cast_action_stop, CastPlaybackService.ACTION_STOP)

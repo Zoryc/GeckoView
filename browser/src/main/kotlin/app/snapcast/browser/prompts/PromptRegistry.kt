@@ -23,6 +23,19 @@ internal class PromptRegistry @Inject constructor() {
         _prompts.update { list -> list.filterNot { it.id == id } }
     }
 
+    /** Denies the site-permission prompts of a tab that navigated to another site. */
+    fun dismissPermissionPrompts(tabId: String) {
+        _prompts.value
+            .filter { it.tabId == tabId && it.isPermissionRequest() }
+            .forEach { it.dismiss() }
+        _prompts.update { list -> list.filterNot { it.tabId == tabId && it.isPermissionRequest() } }
+    }
+
+    private fun BrowserPrompt.isPermissionRequest(): Boolean =
+        this is BrowserPrompt.ContentPermission ||
+            this is BrowserPrompt.MediaPermission ||
+            this is BrowserPrompt.AndroidPermissions
+
     /** Answers every prompt of a closing tab with its "cancel" result. */
     fun dismissAll(tabId: String) {
         _prompts.value.filter { it.tabId == tabId }.forEach { it.dismiss() }

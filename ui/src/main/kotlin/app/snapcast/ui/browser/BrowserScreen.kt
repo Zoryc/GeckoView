@@ -93,7 +93,6 @@ internal fun BrowserScreen(
     navigation: BrowserNavigation,
     viewModel: BrowserViewModel = hiltViewModel(),
 ) {
-    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
 
     val tab by viewModel.selectedTab.collectAsStateWithLifecycle()
@@ -171,7 +170,11 @@ internal fun BrowserScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .then(
-                if (fullscreen) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+                if (fullscreen) {
+                    Modifier
+                } else {
+                    Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                },
             ),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -203,7 +206,11 @@ internal fun BrowserScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .then(
-                        if (fullscreen) Modifier else Modifier.windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)),
+                        if (fullscreen) {
+                            Modifier
+                        } else {
+                            Modifier.windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
+                        },
                     ),
             ) {
                 PageContent(

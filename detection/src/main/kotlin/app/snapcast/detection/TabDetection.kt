@@ -4,7 +4,7 @@ import app.snapcast.core.detection.VideoCollector
 import org.mozilla.geckoview.WebExtension
 
 /** Detection state of one tab. Main thread only. */
-internal class TabDetection(val tabId: String, val isPrivate: Boolean, clock: () -> Long) {
+internal class TabDetection(val tabId: String, val isPrivate: Boolean, private val clock: () -> Long) {
     val collector = VideoCollector(tabId, isPrivate, clock)
     val inspections = InspectionTracker()
 
@@ -14,6 +14,10 @@ internal class TabDetection(val tabId: String, val isPrivate: Boolean, clock: ()
 
     /** The top-frame content script's port, used to post commands. */
     var port: WebExtension.Port? = null
+        private set
+
+    private var portConnectedAt = 0L
+    private var documentStartedAt = 0L
 
     /** Last URL the session reported for this tab (redirect targets and same-document navigations included). */
     var lastLocation: String? = null
@@ -29,6 +33,28 @@ internal class TabDetection(val tabId: String, val isPrivate: Boolean, clock: ()
         resetDocument(url)
         lastLocation = url
         awaitingFirstLocation = true
+        documentStartedAt = clock()
+    }
+
+    fun onPortConnected(newPort: WebExtension.Port) {
+        port = newPort
+        portConnectedAt = clock()
+    }
+
+    fun onPortDisconnected(oldPort: WebExtension.Port) {
+        if (port === oldPort) port = null
+    }
+
+    /**
+     * The port to post a rescan to, or null. A port opened before the current page started belongs
+     * to the previous document; right after the page start that document is usually about to be
+     * replaced, and its replay would bring its videos back, so it is only used once the navigation
+     * evidently did not replace it (a download link, an aborted load).
+     */
+    fun rescanPort(): WebExtension.Port? {
+        val current = port ?: return null
+        val belongsToCurrentDocument = portConnectedAt >= documentStartedAt
+        return current.takeIf { belongsToCurrentDocument || clock() - documentStartedAt > NAVIGATION_GRACE_MS }
     }
 
     /** Forgets every video (new document, or the user cleared the list). */
@@ -45,5 +71,9 @@ internal class TabDetection(val tabId: String, val isPrivate: Boolean, clock: ()
         val first = awaitingFirstLocation
         awaitingFirstLocation = false
         return first
+    }
+
+    private companion object {
+        const val NAVIGATION_GRACE_MS = 10_000L
     }
 }

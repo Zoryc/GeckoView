@@ -302,7 +302,7 @@ test('native link says hello, then replays everything once the app answers', () 
   const commands = [];
   const link = content.createNativeLink(runtime, {
     hello: () => ({ type: 'hello', url: PAGE }),
-    onCommand: (command) => commands.push(command),
+    onCommand: (command, confirming) => commands.push([command, confirming]),
   });
   link.start();
   const port = runtime.ports[0];
@@ -326,13 +326,16 @@ test('native link says hello, then replays everything once the app answers', () 
     { type: 'media', items: [{ url: 'https://x/1.mp4' }, { url: 'https://x/2.mp4' }] },
     { type: 'drm', frameUrl: PAGE },
   ]);
-  assert.deepEqual(commands, [{ type: 'rescan' }]);
+  assert.deepEqual(commands, [[{ type: 'rescan' }, true]]);
 
   port.posted.length = 0;
   port.onMessage.fire({ type: 'rescan' });
   port.onMessage.fire('not a command');
   assert.deepEqual(port.posted, []);
-  assert.equal(commands.length, 2);
+  assert.deepEqual(commands[1], [{ type: 'rescan' }, false]);
+
+  link.replay();
+  assert.equal(port.posted.length, 4);
 });
 
 test('native link reconnects with back-off after a disconnect and replays', () => {
@@ -438,6 +441,28 @@ test('the top frame relays the buffered reports handed over in the hello reply',
   assert.deepEqual(runtime.ports[0].posted[1], { type: 'media', items: [{ url: 'https://cdn.example/n.m3u8', source: 'network' }] });
 });
 
+test('the top frame greets the background again when it did not answer', async () => {
+  const timers = fakeTimers();
+  const runtime = fakeRuntime();
+  content.startContent({
+    window: fakeWindow(PAGE, true),
+    document: fakeDocument([]),
+    browser: { runtime },
+    MutationObserver: fakeObserverClass().Observer,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
+  });
+  await settle();
+  assert.equal(runtime.sent.filter((m) => m.kind === 'snapcast-hello').length, 1);
+  runtime.replies['snapcast-hello'] = { messages: [] };
+  timers.runOnce();
+  await settle();
+  assert.equal(runtime.sent.filter((m) => m.kind === 'snapcast-hello').length, 2);
+  timers.run();
+  await settle();
+  assert.equal(runtime.sent.filter((m) => m.kind === 'snapcast-hello').length, 2);
+});
+
 test('the top frame relays deliveries from the background to the app', () => {
   const frame = startFrame();
   const port = frame.runtime.ports[0];
@@ -457,10 +482,19 @@ test('an app rescan command rescans this frame and asks the background to rescan
   port.onMessage.fire({ type: 'rescan' });
   assert.ok(frame.runtime.sent.some((m) => m.kind === 'snapcast-rescan-all'));
   frame.timers.run();
-  const media = port.posted.filter((m) => m.type === 'media');
+  let media = port.posted.filter((m) => m.type === 'media');
   // The confirmation replay plus the fresh scan.
   assert.equal(media.length, 2);
   assert.equal(media[1].items[0].url, 'https://cdn.example/a.mp4');
+
+  // Later rescans replay the log as well.
+  frame.advance(5000);
+  port.posted.length = 0;
+  port.onMessage.fire({ type: 'rescan' });
+  assert.deepEqual(port.posted.map((m) => m.type), ['hello', 'page', 'media']);
+  frame.timers.run();
+  media = port.posted.filter((m) => m.type === 'media');
+  assert.equal(media.length, 2);
 
   // The broadcast echo right after is ignored by the top frame.
   port.posted.length = 0;

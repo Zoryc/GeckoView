@@ -13,6 +13,11 @@ sealed interface BrowserEvent {
     /** A link the engine cannot handle (intent:, mailto:, tel:, market:, app links). The UI starts an activity. */
     data class OpenExternal(val uri: String) : BrowserEvent
 
+    /**
+     * The tab's content process crashed or was killed. The tab keeps its id but gets a fresh
+     * session (reloaded now if selected, otherwise when next selected): re-attach
+     * [BrowserTabs.session] to the GeckoView.
+     */
     data class TabCrashed(val tabId: String) : BrowserEvent
 
     enum class ContextElementType { NONE, IMAGE, VIDEO, AUDIO }

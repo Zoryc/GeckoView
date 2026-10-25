@@ -205,7 +205,9 @@ internal class TabManager @Inject constructor(
     }
 
     override fun stop(tabId: String) {
-        entries[tabId]?.session?.stop()
+        val entry = entries[tabId] ?: return
+        entry.session.stop()
+        entry.pendingHomeLoad?.let { onLoadDenied(entry, it) }
     }
 
     override fun goHome(tabId: String) {
@@ -262,12 +264,23 @@ internal class TabManager @Inject constructor(
 
     override fun onPageStarted(tab: TabEntry, url: String) {
         // The built-in home page is an about:blank document under the home UI: no progress bar.
-        if (tab.homeCapable && url == ABOUT_BLANK && tab.pendingHomeLoad == null) return
+        if (tab.isDormant || (tab.homeCapable && url == ABOUT_BLANK)) return
         tab.awaitingCommit = true
         update(tab) { it.copy(isLoading = true, progress = INITIAL_PROGRESS) }
     }
 
+    override fun onPageStopped(tab: TabEntry) {
+        val pending = tab.pendingHomeLoad
+        if (pending != null && tab.awaitingCommit) {
+            // The page requested from home finished without committing (e.g. it was a download).
+            tab.awaitingCommit = false
+            onLoadDenied(tab, pending)
+        }
+        update(tab) { it.copy(isLoading = false, progress = if (it.isLoading) 100 else it.progress) }
+    }
+
     override fun onLocationCommitted(tab: TabEntry, url: String) {
+        if (tab.isDormant) return
         if (url == ABOUT_BLANK && tab.homeCapable) {
             // Either the home entry itself (also when navigating back to it) or the old home
             // document while a page requested from home is still loading.
@@ -282,6 +295,11 @@ internal class TabManager @Inject constructor(
         val newDocument = tab.awaitingCommit
         tab.awaitingCommit = false
         val origin = UriParts.originOf(url)
+        if (origin != tab.committedOrigin) {
+            // Permission requests of the previous site are moot now.
+            promptRegistry.dismissPermissionPrompts(tab.id)
+            tab.committedOrigin = origin
+        }
         val keepSecurity = origin != null && origin == tab.securityOrigin
         if (!keepSecurity) tab.securityOrigin = null
         update(tab) { state ->

@@ -59,9 +59,8 @@ internal class ArtworkLoader(private val client: OkHttpClient) {
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         var sampleSize = 1
-        while (bounds.outWidth / (sampleSize * 2) >= MAX_EDGE_PX || bounds.outHeight / (sampleSize * 2) >= MAX_EDGE_PX) {
-            sampleSize *= 2
-        }
+        val longestEdge = maxOf(bounds.outWidth, bounds.outHeight)
+        while (longestEdge / (sampleSize * 2) >= MAX_EDGE_PX) sampleSize *= 2
         val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
     }

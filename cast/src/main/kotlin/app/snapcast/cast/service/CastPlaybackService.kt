@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import javax.inject.Inject
+import kotlin.math.abs
 
 /**
  * Foreground service (type `mediaPlayback`) running while something is cast. It keeps the local proxy
@@ -71,9 +72,20 @@ class CastPlaybackService : Service() {
     private var lastStartId = 0
     private var lastContent: CastNotificationContent? = null
     private var lastMetadata: MetadataKey? = null
+    private var lastSessionState: SessionStateKey? = null
+    private var lastSessionPositionMs = 0L
+    private var lastSessionUpdateAt = 0L
 
     /** Fields the session metadata is built from. */
-    private data class MetadataKey(val title: String?, val subtitle: String?, val durationMs: Long, val posterUrl: String?)
+    private data class MetadataKey(
+        val title: String?,
+        val subtitle: String?,
+        val durationMs: Long,
+        val posterUrl: String?,
+    )
+
+    /** Session playback state apart from the position, which the system extrapolates from the speed. */
+    private data class SessionStateKey(val state: Int, val actions: Long, val speed: Float)
 
     override fun onCreate() {
         super.onCreate()
@@ -154,9 +166,10 @@ class CastPlaybackService : Service() {
     // region Rendering
 
     private fun render(playback: RemotePlaybackState?, device: CastDeviceInfo?) {
-        mediaSession.setPlaybackState(playbackState(playback))
+        updatePlaybackState(playback)
         if (playback != null) {
-            volumeProvider.currentVolume = VolumeSteps.toSteps(playback.volume)
+            val steps = VolumeSteps.toSteps(playback.volume)
+            if (volumeProvider.currentVolume != steps) volumeProvider.currentVolume = steps
             if (playback.playerState == RemotePlayerState.PLAYING) locks.refresh()
         }
         updateMetadata(playback)
@@ -179,7 +192,11 @@ class CastPlaybackService : Service() {
             artwork = artwork.cached(playback?.posterUrl),
         )
 
-    private fun playbackState(playback: RemotePlaybackState?): PlaybackStateCompat {
+    /**
+     * Mirrors the receiver state into the media session. Position-only changes are skipped while they match
+     * the system's extrapolation (position + elapsed time x speed), so the session is not updated every second.
+     */
+    private fun updatePlaybackState(playback: RemotePlaybackState?) {
         val state = when (playback?.playerState) {
             RemotePlayerState.PLAYING -> PlaybackStateCompat.STATE_PLAYING
             RemotePlayerState.PAUSED -> PlaybackStateCompat.STATE_PAUSED
@@ -195,19 +212,26 @@ class CastPlaybackService : Service() {
         }
         if (playback != null) {
             val index = playback.queue.indexOfFirst { it.itemId == playback.currentItemId }
-            if (index >= 0 && index < playback.queue.lastIndex) actions = actions or PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+            if (index >= 0 && index < playback.queue.lastIndex) {
+                actions = actions or PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+            }
             if (index > 0) actions = actions or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
         }
         val speed = if (state == PlaybackStateCompat.STATE_PLAYING) playback?.playbackRate?.toFloat() ?: 1f else 0f
-        return PlaybackStateCompat.Builder()
-            .setActions(actions)
-            .setState(
-                state,
-                playback?.positionMs ?: PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN,
-                speed,
-                SystemClock.elapsedRealtime(),
-            )
-            .build()
+        val positionMs = playback?.positionMs ?: PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN
+        val now = SystemClock.elapsedRealtime()
+        val key = SessionStateKey(state, actions, speed)
+        val expectedMs = lastSessionPositionMs + ((now - lastSessionUpdateAt) * speed).toLong()
+        if (key == lastSessionState && abs(expectedMs - positionMs) < POSITION_DRIFT_MS) return
+        lastSessionState = key
+        lastSessionPositionMs = positionMs
+        lastSessionUpdateAt = now
+        mediaSession.setPlaybackState(
+            PlaybackStateCompat.Builder()
+                .setActions(actions)
+                .setState(state, positionMs, speed, now)
+                .build(),
+        )
     }
 
     private fun updateMetadata(playback: RemotePlaybackState?) {
@@ -251,7 +275,8 @@ class CastPlaybackService : Service() {
     // region Foreground and notification
 
     private fun startInForeground() {
-        val content = lastContent ?: notificationContent(target.playback.value, target.device.value).also { lastContent = it }
+        val content = lastContent
+            ?: notificationContent(target.playback.value, target.device.value).also { lastContent = it }
         val notification = notifications.build(content, mediaSession.sessionToken)
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
@@ -270,13 +295,14 @@ class CastPlaybackService : Service() {
     private fun postNotification(content: CastNotificationContent) {
         if (stopping) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
         ) {
             return
         }
         try {
-            NotificationManagerCompat.from(this)
-                .notify(CastNotificationFactory.NOTIFICATION_ID, notifications.build(content, mediaSession.sessionToken))
+            val notification = notifications.build(content, mediaSession.sessionToken)
+            NotificationManagerCompat.from(this).notify(CastNotificationFactory.NOTIFICATION_ID, notification)
         } catch (e: SecurityException) {
             Log.w(TAG, "Posting the notification failed", e)
         }
@@ -334,5 +360,6 @@ class CastPlaybackService : Service() {
         private const val TAG = "SnapcastCast"
         private const val MEDIA_SESSION_TAG = "SnapcastCast"
         private const val SKIP_MS = 10_000L
+        private const val POSITION_DRIFT_MS = 1_500L
     }
 }

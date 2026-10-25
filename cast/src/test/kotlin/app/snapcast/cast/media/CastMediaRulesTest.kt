@@ -49,6 +49,15 @@ class CastMediaRulesTest {
     }
 
     @Test
+    fun `local files use a concrete provider mime type or the extension`() {
+        assertThat(CastMediaRules.localMimeType("clip.mkv", "video/x-matroska")).isEqualTo("video/x-matroska")
+        assertThat(CastMediaRules.localMimeType("clip.MKV", "application/octet-stream")).isEqualTo("video/x-matroska")
+        assertThat(CastMediaRules.localMimeType("song.mp3", null)).isEqualTo("audio/mpeg")
+        assertThat(CastMediaRules.localMimeType("video", "video/*")).isEqualTo("video/mp4")
+        assertThat(CastMediaRules.localMimeType(null, null)).isEqualTo("video/mp4")
+    }
+
+    @Test
     fun `HLS segment format follows the fragmented MP4 flag`() {
         assertThat(CastMediaRules.hlsSegmentFormat(StreamType.HLS, true)).isEqualTo(HlsSegmentFormat.FMP4)
         assertThat(CastMediaRules.hlsSegmentFormat(StreamType.HLS, false)).isEqualTo(HlsSegmentFormat.TS)
@@ -91,10 +100,21 @@ class CastMediaRulesTest {
     }
 
     @Test
-    fun `TTML subtitles are not proxied`() {
+    fun `any remote http subtitle can be proxied`() {
         assertThat(CastMediaRules.isProxyableSubtitle(track("https://e.com/a.srt"))).isTrue()
         assertThat(CastMediaRules.isProxyableSubtitle(track("https://e.com/a", SubtitleFormat.UNKNOWN))).isTrue()
-        assertThat(CastMediaRules.isProxyableSubtitle(track("https://e.com/a.ttml"))).isFalse()
+        assertThat(CastMediaRules.isProxyableSubtitle(track("https://e.com/a.ttml"))).isTrue()
+        assertThat(CastMediaRules.isProxyableSubtitle(track("blob:https://e.com/1234"))).isFalse()
+        assertThat(CastMediaRules.isProxyableSubtitle(track("https://e.com/a.vtt").copy(isLocal = true))).isFalse()
+    }
+
+    @Test
+    fun `subtitle format comes from the declaration or the URL`() {
+        assertThat(CastMediaRules.subtitleFormat(track("https://e.com/a.srt?x=1"))).isEqualTo(SubtitleFormat.SRT)
+        assertThat(CastMediaRules.subtitleFormat(track("https://e.com/subs/a.VTT#t"))).isEqualTo(SubtitleFormat.VTT)
+        assertThat(CastMediaRules.subtitleFormat(track("https://e.com/a.dfxp"))).isEqualTo(SubtitleFormat.TTML)
+        assertThat(CastMediaRules.subtitleFormat(track("https://e.com/a", SubtitleFormat.SRT))).isEqualTo(SubtitleFormat.SRT)
+        assertThat(CastMediaRules.subtitleFormat(track("https://e.com/subtitles"))).isEqualTo(SubtitleFormat.UNKNOWN)
     }
 
     @Test

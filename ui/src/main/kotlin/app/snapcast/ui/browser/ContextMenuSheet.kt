@@ -94,29 +94,35 @@ internal fun ContextMenuSheet(
             }
             if (link != null && UrlUtils.isHttp(link)) {
                 if (!isPrivateTab) {
-                    MenuRow(Icons.AutoMirrored.Filled.OpenInNew, stringResource(R.string.ui_ctx_open_new_tab), closeThen { actions.openInNewTab(link, false) })
+                    MenuRow(Icons.AutoMirrored.Filled.OpenInNew, R.string.ui_ctx_open_new_tab, closeThen {
+                        actions.openInNewTab(link, false)
+                    })
                 }
-                MenuRow(Icons.Filled.TheaterComedy, stringResource(R.string.ui_ctx_open_private_tab), closeThen { actions.openInNewTab(link, true) })
+                MenuRow(Icons.Filled.TheaterComedy, R.string.ui_ctx_open_private_tab, closeThen {
+                    actions.openInNewTab(link, true)
+                })
             }
             if (link != null) {
-                MenuRow(Icons.Filled.Link, stringResource(R.string.ui_ctx_copy_link), closeThen { actions.copy(link) })
-                MenuRow(Icons.Filled.Share, stringResource(R.string.ui_ctx_share_link), closeThen { actions.share(link, event.title) })
+                MenuRow(Icons.Filled.Link, R.string.ui_ctx_copy_link, closeThen { actions.copy(link) })
+                MenuRow(Icons.Filled.Share, R.string.ui_ctx_share_link, closeThen { actions.share(link, event.title) })
             }
             if (event.type == BrowserEvent.ContextElementType.IMAGE && src != null) {
                 if (UrlUtils.isHttp(src)) {
-                    MenuRow(Icons.Filled.Image, stringResource(R.string.ui_ctx_open_image), closeThen { actions.openInNewTab(src, isPrivateTab) })
+                    MenuRow(Icons.Filled.Image, R.string.ui_ctx_open_image, closeThen {
+                        actions.openInNewTab(src, isPrivateTab)
+                    })
                 }
-                MenuRow(Icons.Filled.ContentCopy, stringResource(R.string.ui_ctx_copy_image_link), closeThen { actions.copy(src) })
+                MenuRow(Icons.Filled.ContentCopy, R.string.ui_ctx_copy_image_link, closeThen { actions.copy(src) })
             }
             if (event.type == BrowserEvent.ContextElementType.VIDEO) {
                 val video = state.video
                 if (video != null) {
-                    MenuRow(Icons.Filled.Cast, stringResource(R.string.ui_ctx_cast_video), closeThen { actions.castVideo(video) })
-                    MenuRow(Icons.Filled.PhoneAndroid, stringResource(R.string.ui_ctx_play_video), closeThen { actions.playVideo(video) })
+                    MenuRow(Icons.Filled.Cast, R.string.ui_ctx_cast_video, closeThen { actions.castVideo(video) })
+                    MenuRow(Icons.Filled.PhoneAndroid, R.string.ui_ctx_play_video, closeThen { actions.playVideo(video) })
                 }
                 val videoLink = video?.url ?: src
                 if (videoLink != null) {
-                    MenuRow(Icons.Filled.VideoFile, stringResource(R.string.ui_ctx_copy_video_link), closeThen { actions.copy(videoLink) })
+                    MenuRow(Icons.Filled.VideoFile, R.string.ui_ctx_copy_video_link, closeThen { actions.copy(videoLink) })
                 }
             }
         }
@@ -124,9 +130,9 @@ internal fun ContextMenuSheet(
 }
 
 @Composable
-private fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun MenuRow(icon: ImageVector, label: Int, onClick: () -> Unit) {
     ListItem(
-        headlineContent = { Text(label) },
+        headlineContent = { Text(stringResource(label)) },
         leadingContent = { Icon(icon, contentDescription = null) },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         modifier = Modifier.clickable(onClick = onClick),

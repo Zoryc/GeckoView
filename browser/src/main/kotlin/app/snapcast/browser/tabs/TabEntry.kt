@@ -29,6 +29,9 @@ internal class TabEntry(
     /** A new document started loading and its location has not committed yet. */
     var awaitingCommit: Boolean = false
 
+    /** Origin of the last committed top-level location. */
+    var committedOrigin: String? = null
+
     /** Origin the current [TabState.security] was computed for. */
     var securityOrigin: String? = null
 
@@ -39,4 +42,10 @@ internal class TabEntry(
     var pendingRestore: SavedTab? = null
 
     val isShowingHome: Boolean get() = state.isHome
+
+    /**
+     * Restored (or crash-recovered) but not loaded yet: the session only shows its initial
+     * about:blank, whose events must not overwrite the saved state.
+     */
+    val isDormant: Boolean get() = pendingRestore != null
 }
