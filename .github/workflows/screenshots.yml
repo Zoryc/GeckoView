@@ -49,9 +49,17 @@ jobs:
       - name: Resize and commit
         run: |
           mkdir -p docs/screenshots
-          for f in build/screenshots/0*.png; do
-            convert "$f" -resize 540x -strip "docs/screenshots/$(basename "$f")"
-          done
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          import glob, os
+          from PIL import Image
+          for path in sorted(glob.glob("build/screenshots/0*.png")):
+              image = Image.open(path).convert("RGB")
+              width = 540
+              height = round(image.height * width / image.width)
+              out = os.path.join("docs/screenshots", os.path.basename(path))
+              image.resize((width, height), Image.LANCZOS).save(out, optimize=True)
+          PY
           ls -la docs/screenshots
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
