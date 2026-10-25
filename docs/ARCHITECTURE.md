@@ -80,7 +80,7 @@ keys, subtitles and DASH templates also hit the proxy (signed /u/ and /b/ routes
 
 ## Reference material
 
-* GeckoView 158 public API: `geckoview-api.txt` (exact signatures). Sources and the official example app
+* GeckoView 158 public API: `mobile/android/geckoview/api.txt` at tag `FIREFOX_RELEASE_158_END` (exact signatures). Sources and the official example app
   are mirrored at `https://raw.githubusercontent.com/mozilla-firefox/firefox/FIREFOX_RELEASE_158_END/mobile/android/geckoview/src/main/java/org/mozilla/geckoview/<Class>.java`
   and `.../mobile/android/geckoview_example/src/main/java/org/mozilla/geckoview_example/`.
 * Versions: `gradle/libs.versions.toml`.
