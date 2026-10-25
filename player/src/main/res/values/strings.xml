@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="player_error_missing_request">Couldn\'t open the player: the video link is missing.</string>
+
+    <string name="player_back">Back</string>
+    <string name="player_enter_pip">Picture-in-picture</string>
+    <string name="player_play">Play</string>
+    <string name="player_pause">Pause</string>
+
+    <string name="player_resumed_at">Resumed at %1$s</string>
+    <string name="player_start_over">Start over</string>
+    <string name="player_dismiss">Dismiss</string>
+
+    <string name="player_error_title">Can\'t play this video</string>
+    <string name="player_retry">Retry</string>
+    <string name="player_close">Close</string>
+
+    <string name="player_error_http_forbidden">The server refused access (HTTP %1$d). The link may have expired: reload the page and try again.</string>
+    <string name="player_error_http_not_found">The video wasn\'t found on the server (HTTP %1$d).</string>
+    <string name="player_error_http_status">The server returned an error (HTTP %1$d).</string>
+    <string name="player_error_http">The server returned an error.</string>
+    <string name="player_error_network">Couldn\'t connect to the server. Check your internet connection.</string>
+    <string name="player_error_timeout">The connection timed out.</string>
+    <string name="player_error_cleartext">Unencrypted (http://) connections are blocked for this video.</string>
+    <string name="player_error_not_a_video">The server didn\'t return a video.</string>
+    <string name="player_error_file_not_found">The file couldn\'t be found.</string>
+    <string name="player_error_no_permission">Snapcast isn\'t allowed to read this file.</string>
+    <string name="player_error_load_failed">The video couldn\'t be loaded.</string>
+    <string name="player_error_malformed">The video data couldn\'t be read. The stream may be damaged or the link may have expired.</string>
+    <string name="player_error_unsupported">This video format isn\'t supported by the built-in player.</string>
+    <string name="player_error_decoder">This device can\'t decode this video.</string>
+    <string name="player_error_audio_output">The audio output couldn\'t be started.</string>
+    <string name="player_error_drm">This video is DRM-protected and can\'t be played.</string>
+    <string name="player_error_live_window">Playback fell too far behind the live stream.</string>
+    <string name="player_error_unknown">Playback failed.</string>
+</resources>
