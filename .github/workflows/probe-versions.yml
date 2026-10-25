@@ -1,0 +1,51 @@
+name: Probe dependency versions
+
+on:
+  push:
+    paths:
+      - .github/workflows/probe-versions.yml
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print latest versions from Google and Mozilla Maven
+        run: |
+          latest() {
+            local repo="$1" path="$2"
+            local xml
+            xml=$(curl -fsSL "$repo/$path/maven-metadata.xml" || echo "")
+            echo "== $path"
+            echo "$xml" | grep -oE '<version>[^<]+' | sed 's/<version>//' | tail -n 12 | tr '\n' ' '
+            echo
+          }
+          G=https://dl.google.com/dl/android/maven2
+          M=https://maven.mozilla.org/maven2
+          latest $M org/mozilla/geckoview/geckoview
+          latest $M org/mozilla/geckoview/geckoview-arm64-v8a
+          latest $G com/android/tools/build/gradle
+          latest $G com/google/android/gms/play-services-cast-framework
+          latest $G androidx/mediarouter/mediarouter
+          latest $G androidx/media/media
+          latest $G androidx/media3/media3-exoplayer
+          latest $G androidx/compose/compose-bom
+          latest $G androidx/activity/activity-compose
+          latest $G androidx/lifecycle/lifecycle-runtime-compose
+          latest $G androidx/navigation/navigation-compose
+          latest $G androidx/hilt/hilt-navigation-compose
+          latest $G androidx/hilt/hilt-lifecycle-viewmodel-compose
+          latest $G androidx/room/room-runtime
+          latest $G androidx/datastore/datastore-preferences
+          latest $G androidx/core/core-ktx
+          latest $G androidx/appcompat/appcompat
+          latest $G androidx/fragment/fragment-ktx
+          latest $G com/google/android/material/material
+          latest $G androidx/compose/material/material-icons-extended
+          latest $G androidx/documentfile/documentfile
+          latest $G androidx/test/ext/junit
+      - name: Android SDK on runner
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools" || true
+          java -version
