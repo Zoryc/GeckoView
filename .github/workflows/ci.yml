@@ -25,7 +25,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
 
       - name: Detector extension tests (Node)
-        run: node --test detection/src/test/js/
+        run: node --test 'detection/src/test/js/**/*.test.js'
 
       - name: Unit tests and debug build
         run: ./gradlew :core:test :proxy:test testDebugUnitTest assembleDebug --continue --stacktrace
