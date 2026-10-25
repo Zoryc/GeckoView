@@ -59,6 +59,12 @@ internal class ProxyTestHarness(
 
     override fun close() {
         proxy.stop()
+        // Release every pooled connection first: a response the proxy cut short (emulated Range) can
+        // otherwise still be in flight inside MockWebServer while it shuts down.
+        for (okHttp in listOf(client, upstreamClient)) {
+            okHttp.dispatcher.cancelAll()
+            okHttp.connectionPool.evictAll()
+        }
         origin.close()
         cdn.close()
     }

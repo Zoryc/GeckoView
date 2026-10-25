@@ -68,13 +68,25 @@ jobs:
           grep -E '^e: |^ERROR|R8|Missing class' release.log | sort -u | head -n 200 || true
           grep -E -A12 '^\* What went wrong' release.log | head -n 200 || true
 
-      - name: Upload release APKs
+      - name: Upload release APK (arm64-v8a, most phones)
         if: success()
         uses: actions/upload-artifact@v6
         with:
-          name: snapcast-release-apks
-          path: app/build/outputs/apk/release/*.apk
+          name: snapcast-release-arm64-v8a
+          path: app/build/outputs/apk/release/app-arm64-v8a-release.apk
           retention-days: 30
+          compression-level: 0
+
+      - name: Upload release APKs (other ABIs)
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: snapcast-release-other-abis
+          path: |
+            app/build/outputs/apk/release/app-armeabi-v7a-release.apk
+            app/build/outputs/apk/release/app-x86_64-release.apk
+          retention-days: 30
+          compression-level: 0
 
       - name: Upload build log
         if: always()
