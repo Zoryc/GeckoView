@@ -1,5 +1,6 @@
 package app.snapcast.ui.settings
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,6 +48,7 @@ import app.snapcast.ui.shared.ConfirmDialog
 import app.snapcast.ui.shared.ScreenScaffold
 import app.snapcast.ui.shared.SectionHeader
 import app.snapcast.ui.shared.SnackbarMessages
+import app.snapcast.ui.shared.quantityString
 
 /** Which settings dialog is open (saved across configuration changes). */
 private enum class SettingsDialog {
@@ -164,7 +166,11 @@ private fun DetectionSection(settings: AppSettings, onOpenDialog: (SettingsDialo
     )
     ClickableSetting(
         title = stringResource(R.string.ui_screens_settings_ignored_domains),
-        summary = stringResource(R.string.ui_screens_settings_ignored_domains_summary, settings.ignoredDomains.size),
+        summary = quantityString(
+            R.plurals.ui_screens_settings_ignored_domains_summary,
+            settings.ignoredDomains.size,
+            settings.ignoredDomains.size,
+        ),
         icon = Icons.Default.Block,
         onClick = { onOpenDialog(SettingsDialog.IGNORED_DOMAINS) },
     )
@@ -352,8 +358,8 @@ private fun SettingsDialogHost(
 @Composable
 private fun ClearConfirmDialog(
     action: ClearAction,
-    titleRes: Int,
-    bodyRes: Int,
+    @StringRes titleRes: Int,
+    @StringRes bodyRes: Int,
     viewModel: SettingsViewModel,
     onDismiss: () -> Unit,
 ) {

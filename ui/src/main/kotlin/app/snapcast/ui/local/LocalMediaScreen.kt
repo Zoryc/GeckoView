@@ -83,6 +83,7 @@ import app.snapcast.ui.shared.EmptyState
 import app.snapcast.ui.shared.ScreenScaffold
 import app.snapcast.ui.shared.SectionHeader
 import app.snapcast.ui.shared.hostFragmentActivity
+import app.snapcast.ui.shared.quantityString
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 
@@ -269,13 +270,13 @@ private fun PlaylistCard(
                     } else {
                         Text(playlist.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
-                            stringResource(R.string.ui_screens_local_channel_count, playlist.channels.size),
+                            quantityString(R.plurals.ui_screens_local_channel_count, playlist.channels.size, playlist.channels.size),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         if (playlist.skipped > 0) {
                             Text(
-                                stringResource(R.string.ui_screens_local_skipped, playlist.skipped),
+                                quantityString(R.plurals.ui_screens_local_skipped, playlist.skipped, playlist.skipped),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

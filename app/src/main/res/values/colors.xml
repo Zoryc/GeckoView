@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="snapcast_background">#FF0F1115</color>
-    <color name="snapcast_primary">#FF4FD1C5</color>
-    <color name="snapcast_on_primary">#FF00201D</color>
+    <color name="snapcast_background">#FF0E1014</color>
+    <color name="snapcast_primary">#FFFF8A65</color>
+    <color name="snapcast_on_primary">#FF3E0D00</color>
     <color name="snapcast_launcher_background">#FF101820</color>
 </resources>

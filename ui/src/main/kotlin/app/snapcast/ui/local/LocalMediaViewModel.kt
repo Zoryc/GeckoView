@@ -79,16 +79,13 @@ internal class LocalMediaViewModel @Inject constructor(
     val loadingPlaylist: StateFlow<Boolean> = loading.asStateFlow()
 
     val channels: StateFlow<ChannelListState> =
-        combine(store.playlist, query.debounce(QUERY_DEBOUNCE_MS), collapsed) { playlist, text, collapsedGroups ->
-            ChannelListState(
-                playlist = playlist,
-                query = text,
-                groups = playlist?.let { IptvChannels.group(it.channels, text) }.orEmpty(),
-                collapsedGroups = collapsedGroups,
-            )
-        }
+        combine(store.playlist, query.debounce(QUERY_DEBOUNCE_MS), collapsed, ::channelState)
             .flowOn(Dispatchers.Default)
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), ChannelListState(playlist = store.playlist.value))
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = channelState(store.playlist.value, query.value, collapsed.value),
+            )
 
     // Videos stored on the phone
 
@@ -102,6 +99,7 @@ internal class LocalMediaViewModel @Inject constructor(
 
     fun playLocalVideo(uri: Uri) {
         viewModelScope.launch {
+            documents.keepReadAccess(uri)
             val info = documents.info(uri)
             val name = info.displayName ?: uri.toString()
             val type = MediaClassifier.typeFromContentType(info.mimeType)
@@ -172,6 +170,13 @@ internal class LocalMediaViewModel @Inject constructor(
 
     fun showDeviceChooser(activity: FragmentActivity) = controller.showDeviceChooser(activity)
 
+    private fun channelState(playlist: IptvPlaylist?, text: String, collapsedGroups: Set<String>) = ChannelListState(
+        playlist = playlist,
+        query = text,
+        groups = playlist?.let { IptvChannels.group(it.channels, text) }.orEmpty(),
+        collapsedGroups = collapsedGroups,
+    )
+
     private fun load(block: suspend () -> IptvPlaylist) {
         if (loading.value) return
         loading.value = true
@@ -180,7 +185,14 @@ internal class LocalMediaViewModel @Inject constructor(
                 val playlist = block()
                 store.set(playlist)
                 collapsed.value = emptySet()
-                message(UiMessage.res(R.string.ui_screens_local_playlist_loaded, playlist.channels.size, playlist.name))
+                message(
+                    UiMessage.plural(
+                        R.plurals.ui_screens_local_playlist_loaded,
+                        playlist.channels.size,
+                        playlist.channels.size,
+                        playlist.name,
+                    ),
+                )
             } catch (e: PlaylistException) {
                 message(playlistErrorMessage(e))
             } finally {

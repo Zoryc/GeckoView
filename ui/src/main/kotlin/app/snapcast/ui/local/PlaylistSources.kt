@@ -1,6 +1,7 @@
 package app.snapcast.ui.local
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import app.snapcast.core.media.M3uParser
@@ -43,6 +44,20 @@ internal class LocalDocuments @Inject constructor(@ApplicationContext private va
             null
         }
         DocumentInfo(displayName = name?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment, mimeType = mime)
+    }
+
+    /**
+     * Keeps read access to [uri] beyond the lifetime of the picker result (the player may outlive this screen).
+     * Documents that do not offer persistable access keep the temporary grant.
+     */
+    suspend fun keepReadAccess(uri: Uri) {
+        withContext(Dispatchers.IO) {
+            try {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e: SecurityException) {
+                // Not persistable: the grant from the picker still covers this process.
+            }
+        }
     }
 
     /** UTF-8 text of [uri]; throws [PlaylistException] when it cannot be read or exceeds [maxBytes]. */

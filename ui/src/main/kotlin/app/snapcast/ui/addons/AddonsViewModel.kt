@@ -55,13 +55,11 @@ internal class AddonsViewModel @Inject constructor(
     val messages: Flow<UiMessage> = messageChannel.receiveAsFlow()
 
     val uiState: StateFlow<AddonsUiState> =
-        combine(repository.addons, repository.installState, installError, copying) { addons, install, error, copy ->
-            AddonsUiState(
-                addons = addons,
-                installing = copy || install is AddonInstallState.Installing,
-                installError = error,
-            )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), AddonsUiState())
+        combine(repository.addons, repository.installState, installError, copying, ::addonsState).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+            initialValue = addonsState(repository.addons.value, repository.installState.value, installError.value, copying.value),
+        )
 
     init {
         repository.refresh()
@@ -124,6 +122,17 @@ internal class AddonsViewModel @Inject constructor(
     fun openPopup(id: String) = repository.clickAction(id, null)
 
     fun uninstall(id: String) = repository.uninstall(id)
+
+    private fun addonsState(
+        addons: List<AddonInfo>,
+        install: AddonInstallState,
+        error: String?,
+        copyingFile: Boolean,
+    ) = AddonsUiState(
+        addons = addons,
+        installing = copyingFile || install is AddonInstallState.Installing,
+        installError = error,
+    )
 
     /**
      * Copies [uri] to `cache/addon-install/` (replacing earlier copies) and returns the file, or null when the

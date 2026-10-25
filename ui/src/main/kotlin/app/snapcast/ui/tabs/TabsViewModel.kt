@@ -23,8 +23,8 @@ internal class TabsViewModel @Inject constructor(
     private val showPrivate = MutableStateFlow(browserTabs.selectedTab.value?.isPrivate == true)
 
     val uiState: StateFlow<TabsUiState> =
-        combine(browserTabs.tabs, browserTabs.selectedTabId, showPrivate) { tabs, selectedId, private ->
-            TabCards.state(tabs, selectedId, private)
+        combine(browserTabs.tabs, browserTabs.selectedTabId, showPrivate) { tabs, selectedId, privateMode ->
+            TabCards.state(tabs, selectedId, privateMode)
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
@@ -35,8 +35,8 @@ internal class TabsViewModel @Inject constructor(
             ),
         )
 
-    fun showPrivateTabs(private: Boolean) {
-        showPrivate.value = private
+    fun showPrivateTabs(privateMode: Boolean) {
+        showPrivate.value = privateMode
     }
 
     fun selectTab(tabId: String) = browserTabs.selectTab(tabId)

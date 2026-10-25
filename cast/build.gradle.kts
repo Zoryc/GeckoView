@@ -41,7 +41,7 @@ dependencies {
     api(libs.androidx.mediarouter)
     implementation(libs.androidx.media)
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.fragment.ktx)
+    api(libs.androidx.fragment.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.androidx.lifecycle.process)

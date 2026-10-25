@@ -9,6 +9,7 @@ import app.snapcast.cast.CastController
 import app.snapcast.cast.CastQueueItem
 import app.snapcast.cast.CastResult
 import app.snapcast.cast.PendingQueueItem
+import app.snapcast.cast.RemotePlaybackState
 import app.snapcast.ui.R
 import app.snapcast.ui.shared.UiMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -55,13 +56,16 @@ internal class QueueViewModel @Inject constructor(
     val startingCast: StateFlow<Boolean> = castingQueue.asStateFlow()
 
     val uiState: StateFlow<QueueUiState> =
-        combine(controller.connectionState, controller.playback, controller.pendingQueue) { connection, playback, pending ->
-            if (connection == CastConnectionState.CONNECTED && playback != null) {
-                QueueUiState.Remote(playback.queue, playback.currentItemId)
-            } else {
-                QueueUiState.Pending(pending)
-            }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), QueueUiState.Pending(emptyList()))
+        combine(controller.connectionState, controller.playback, controller.pendingQueue, ::queueState)
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = queueState(
+                    controller.connectionState.value,
+                    controller.playback.value,
+                    controller.pendingQueue.value,
+                ),
+            )
 
     // Receiver queue
 
@@ -123,6 +127,16 @@ internal class QueueViewModel @Inject constructor(
     }
 
     fun showDeviceChooser(activity: FragmentActivity) = controller.showDeviceChooser(activity)
+
+    private fun queueState(
+        connection: CastConnectionState,
+        playback: RemotePlaybackState?,
+        pending: List<PendingQueueItem>,
+    ): QueueUiState = if (connection == CastConnectionState.CONNECTED && playback != null) {
+        QueueUiState.Remote(playback.queue, playback.currentItemId)
+    } else {
+        QueueUiState.Pending(pending)
+    }
 
     private companion object {
         const val TAG = "SnapcastQueue"

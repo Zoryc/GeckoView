@@ -31,8 +31,8 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.Forward10
-import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
@@ -135,7 +135,8 @@ fun CastControllerScreen(onBack: () -> Unit, onOpenQueue: () -> Unit) {
                     IconButton(onClick = onOpenQueue) {
                         Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = stringResource(R.string.ui_screens_cast_queue))
                     }
-                    if (state.connection != CastConnectionState.UNAVAILABLE) {
+                    // While nothing is casting the empty state shows a large Cast button instead.
+                    if (state.playback != null && state.connection != CastConnectionState.UNAVAILABLE) {
                         AndroidView(
                             factory = { viewContext -> viewModel.createCastButton(viewContext) },
                             modifier = Modifier.size(48.dp),
@@ -174,7 +175,9 @@ fun CastControllerScreen(onBack: () -> Unit, onOpenQueue: () -> Unit) {
                     state = state,
                     createCastButton = viewModel::createCastButton,
                     onDisconnect = viewModel::disconnect,
-                    modifier = Modifier.align(Alignment.Center),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .verticalScroll(rememberScrollState()),
                 )
             } else {
                 ExpandedController(

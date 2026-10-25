@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.snapcast.ui.R
 import app.snapcast.ui.shared.ConfirmDialog
 import app.snapcast.ui.shared.EmptyState
+import app.snapcast.ui.shared.quantityString
 import app.snapcast.ui.shared.siteInitial
 
 /**
@@ -110,7 +111,7 @@ private fun TabsContent(
                         }
                     },
                     actions = {
-                        TabsMenu(enabled = tabs.isNotEmpty(), private = state.showPrivate) { confirmCloseAll = true }
+                        TabsMenu(enabled = tabs.isNotEmpty(), privateMode = state.showPrivate) { confirmCloseAll = true }
                     },
                 )
                 PrimaryTabRow(selectedTabIndex = if (state.showPrivate) 1 else 0) {
@@ -186,7 +187,7 @@ private fun TabsContent(
             title = stringResource(
                 if (state.showPrivate) R.string.ui_screens_tabs_close_all_private_title else R.string.ui_screens_tabs_close_all_title,
             ),
-            text = stringResource(R.string.ui_screens_tabs_close_all_body, tabs.size),
+            text = quantityString(R.plurals.ui_screens_tabs_close_all_body, tabs.size, tabs.size),
             confirmLabel = stringResource(R.string.ui_screens_tabs_close_all_confirm),
             onConfirm = onCloseAll,
             onDismiss = { confirmCloseAll = false },
@@ -195,7 +196,7 @@ private fun TabsContent(
 }
 
 @Composable
-private fun TabsMenu(enabled: Boolean, private: Boolean, onCloseAll: () -> Unit) {
+private fun TabsMenu(enabled: Boolean, privateMode: Boolean, onCloseAll: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
@@ -206,7 +207,7 @@ private fun TabsMenu(enabled: Boolean, private: Boolean, onCloseAll: () -> Unit)
                 text = {
                     Text(
                         stringResource(
-                            if (private) R.string.ui_screens_tabs_close_all_private else R.string.ui_screens_tabs_close_all,
+                            if (privateMode) R.string.ui_screens_tabs_close_all_private else R.string.ui_screens_tabs_close_all,
                         ),
                     )
                 },
