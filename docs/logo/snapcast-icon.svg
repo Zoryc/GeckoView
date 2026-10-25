@@ -1,21 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
 <title>Snapcast</title>
 <defs>
-<linearGradient id="sc-bg" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="#121B27"/><stop offset="1" stop-color="#070C14"/></linearGradient>
-<linearGradient id="sc-rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.13"/><stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.04"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.07"/></linearGradient>
-<radialGradient id="sc-sheen" cx="0.3" cy="0.05" r="0.75"><stop offset="0" stop-color="#5AA0FF" stop-opacity="0.07"/><stop offset="1" stop-color="#5AA0FF" stop-opacity="0"/></radialGradient>
-<linearGradient id="sc-a" gradientUnits="userSpaceOnUse" x1="184" y1="94" x2="184" y2="284.58"><stop offset="0" stop-color="#3EC0FF"/><stop offset="1" stop-color="#17A6FB"/></linearGradient>
-<linearGradient id="sc-b" gradientUnits="userSpaceOnUse" x1="275.2" y1="159.82" x2="374" y2="225.64"><stop offset="0" stop-color="#2898FB"/><stop offset="1" stop-color="#0562F2"/></linearGradient>
-<linearGradient id="sc-c" gradientUnits="userSpaceOnUse" x1="222" y1="218.76" x2="348.44" y2="359.3"><stop offset="0" stop-color="#035DEE"/><stop offset="1" stop-color="#1282FA"/></linearGradient>
-<linearGradient id="sc-d" gradientUnits="userSpaceOnUse" x1="374" y1="306.51" x2="263.22" y2="415"><stop offset="0" stop-color="#1A97F9"/><stop offset="1" stop-color="#2BB8FE"/></linearGradient>
+<linearGradient id="sc-bg" x1="0.3333" y1="0" x2="0.6667" y2="1"><stop offset="0" stop-color="#0D1520"/><stop offset="1" stop-color="#070C15"/></linearGradient>
+<radialGradient id="sc-sheen" cx="0.3" cy="0.05" r="0.75"><stop offset="0" stop-color="#5AA0FF" stop-opacity="0.03"/><stop offset="1" stop-color="#5AA0FF" stop-opacity="0"/></radialGradient>
+<linearGradient id="sc-rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.055"/><stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.02"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.035"/></linearGradient>
+<linearGradient id="sc-a" gradientUnits="userSpaceOnUse" x1="184" y1="95.75" x2="184" y2="281.32"><stop offset="0" stop-color="#3EC0FF"/><stop offset="1" stop-color="#17A6FB"/></linearGradient>
+<linearGradient id="sc-b" gradientUnits="userSpaceOnUse" x1="272.17" y1="160.69" x2="374" y2="227.39"><stop offset="0" stop-color="#2898FB"/><stop offset="1" stop-color="#0562F2"/></linearGradient>
+<linearGradient id="sc-c" gradientUnits="userSpaceOnUse" x1="222" y1="222.26" x2="351.47" y2="362.86"><stop offset="0" stop-color="#035DEE"/><stop offset="1" stop-color="#1282FA"/></linearGradient>
+<linearGradient id="sc-d" gradientUnits="userSpaceOnUse" x1="374" y1="310.01" x2="267.66" y2="415"><stop offset="0" stop-color="#1A97F9"/><stop offset="1" stop-color="#2BB8FE"/></linearGradient>
 <linearGradient id="sc-w" gradientUnits="userSpaceOnUse" x1="113" y1="289" x2="239" y2="415"><stop offset="0" stop-color="#2CC3FB"/><stop offset="0.4" stop-color="#0B8EF7"/><stop offset="1" stop-color="#056BEF"/></linearGradient>
 </defs>
 <rect width="512" height="512" rx="112" fill="url(#sc-bg)"/>
 <rect width="512" height="512" rx="112" fill="url(#sc-sheen)"/>
-<rect x="2" y="2" width="508" height="508" rx="110" fill="none" stroke="url(#sc-rim)" stroke-width="4"/>
-<path fill="url(#sc-a)" d="M150,135.57 L218,96.31 A8,8 0 0,1 226,96.31 L370,179.45 A8,8 0 0,1 374,186.38 L374,255.66 A8,8 0 0,1 362,262.59 L222,181.76 L222,218.76 L370,304.21 A8,8 0 0,1 374,311.13 L374,360.14 A8,8 0 0,1 370,367.07 L288.83,413.93 A8,8 0 0,1 284.83,415 L254,415 A141,141 0 0,0 240.23,354.23 L272.44,335.64 L150,264.95 A8,8 0 0,1 146,258.02 L146,142.5 A8,8 0 0,1 150,135.57 Z"/>
-<path fill="url(#sc-b)" d="M298,137.88 L370,179.45 A8,8 0 0,1 374,186.38 L374,255.66 A8,8 0 0,1 362,262.59 L222,181.76 Z"/>
-<path fill="url(#sc-c)" d="M222,218.76 L348.44,291.76 L272.44,335.64 L222,306.51 Z"/>
-<path fill="url(#sc-d)" d="M348.44,291.76 L370,304.21 A8,8 0 0,1 374,311.13 L374,360.14 A8,8 0 0,1 370,367.07 L288.83,413.93 A8,8 0 0,1 284.83,415 L254,415 A141,141 0 0,0 240.23,354.23 L272.44,335.64 Z"/>
+<rect x="1.5" y="1.5" width="509" height="509" rx="110.5" fill="none" stroke="url(#sc-rim)" stroke-width="3"/>
+<path fill="url(#sc-a)" d="M150,135.57 L214.97,98.06 A8,8 0 0,1 222.97,98.06 L297.97,141.36 L225,183.49 L222,181.76 L222,222.26 L225,223.99 L225,304.99 L150,261.69 A8,8 0 0,1 146,254.76 L146,142.5 A8,8 0 0,1 150,135.57 Z"/>
+<path fill="url(#sc-b)" d="M294.97,139.63 L370,182.95 A8,8 0 0,1 374,189.88 L374,255.66 A8,8 0 0,1 362,262.59 L222,181.76 Z"/>
+<path fill="url(#sc-c)" d="M222,222.26 L351.47,297.01 L354.47,298.74 L284.32,339.24 L222,303.26 Z"/>
+<path fill="url(#sc-d)" d="M351.47,297.01 L370,307.71 A8,8 0 0,1 374,314.63 L374,358.18 A8,8 0 0,1 370,365.11 L285.44,413.93 A8,8 0 0,1 281.44,415 L254,415 A141,141 0 0,0 242.74,359.78 L281.32,337.51 Z"/>
 <path fill="url(#sc-w)" d="M113,415 L141,415 A28,28 0 0,0 113,387 Z M188,415 A75,75 0 0,0 113,340 L113,368 A47,47 0 0,1 160,415 Z M235,415 A122,122 0 0,0 113,293 L113,321 A94,94 0 0,1 207,415 Z"/>
 </svg>

@@ -3,6 +3,6 @@
     <color name="snapcast_background">#FF0E1014</color>
     <color name="snapcast_primary">#FFFF8A65</color>
     <color name="snapcast_on_primary">#FF3E0D00</color>
-    <!-- Mid-point of the launcher background gradient (#121B27 -> #070C14). -->
-    <color name="snapcast_launcher_background">#FF0C131D</color>
+    <!-- Mid-point of the launcher background gradient (#0D1520 -> #070C15). -->
+    <color name="snapcast_launcher_background">#FF0A101A</color>
 </resources>
