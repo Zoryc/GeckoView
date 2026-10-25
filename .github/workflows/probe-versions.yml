@@ -22,28 +22,17 @@ jobs:
           }
           G=https://dl.google.com/dl/android/maven2
           M=https://maven.mozilla.org/maven2
-          latest $M org/mozilla/geckoview/geckoview
-          latest $M org/mozilla/geckoview/geckoview-arm64-v8a
-          latest $G com/android/tools/build/gradle
-          latest $G com/google/android/gms/play-services-cast-framework
-          latest $G androidx/mediarouter/mediarouter
-          latest $G androidx/media/media
-          latest $G androidx/media3/media3-exoplayer
-          latest $G androidx/compose/compose-bom
-          latest $G androidx/activity/activity-compose
-          latest $G androidx/lifecycle/lifecycle-runtime-compose
-          latest $G androidx/navigation/navigation-compose
-          latest $G androidx/hilt/hilt-navigation-compose
-          latest $G androidx/hilt/hilt-lifecycle-viewmodel-compose
-          latest $G androidx/room/room-runtime
-          latest $G androidx/datastore/datastore-preferences
-          latest $G androidx/core/core-ktx
-          latest $G androidx/appcompat/appcompat
-          latest $G androidx/fragment/fragment-ktx
-          latest $G com/google/android/material/material
-          latest $G androidx/compose/material/material-icons-extended
-          latest $G androidx/documentfile/documentfile
-          latest $G androidx/test/ext/junit
+          curl -fsSL $M/org/mozilla/geckoview/geckoview/maven-metadata.xml | grep -oE '<(latest|release)>[^<]+' || true
+          echo "== geckoview 15x/16x versions"
+          curl -fsSL $M/org/mozilla/geckoview/geckoview/maven-metadata.xml | grep -oE '<version>1[5-9][0-9]\.[^<]+' | sed 's/<version>//' | sort -V | tail -n 8
+          echo "== AGP 9.x stable"
+          curl -fsSL $G/com/android/tools/build/gradle/maven-metadata.xml | grep -oE '<version>9\.[0-9]+\.[0-9]+<' | sort -V | tail -n 6
+          echo "== cast-framework 23.0.0 pom"
+          curl -fsSL $G/com/google/android/gms/play-services-cast-framework/23.0.0/play-services-cast-framework-23.0.0.pom | grep -A2 '<artifactId>' | grep -oE '<(artifactId|version)>[^<]+' | tr '\n' ' '
+          echo
+          echo "== cast 23.0.0 pom"
+          curl -fsSL $G/com/google/android/gms/play-services-cast/23.0.0/play-services-cast-23.0.0.pom | grep -oE '<(artifactId|version|minSdkVersion)>[^<]+' | tr '\n' ' '
+          echo
       - name: Android SDK on runner
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
