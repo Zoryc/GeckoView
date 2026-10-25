@@ -150,7 +150,7 @@ internal class PermissionDescriber @Inject constructor(
         (PermissionMessages.api(permissions).map(strings::api) +
             PermissionMessages.dataCollection(dataCollection).map(strings::dataCollection)).distinct()
 
-    /** Host access lines for match patterns such as `<all_urls>` or `*://*.example.com/*`. */
+    /** Host access lines for match patterns such as `<all_urls>` or wildcard-host patterns. */
     fun describeOrigins(origins: Collection<String>): List<String> =
         PermissionMessages.siteAccess(origins).map(strings::siteAccess).distinct()
 }

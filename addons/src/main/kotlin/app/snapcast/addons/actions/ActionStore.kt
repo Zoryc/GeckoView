@@ -20,13 +20,13 @@ internal data class ActionSnapshot<A : Any>(
      * The effective actions for [tabId] (defaults only when null): an override is combined with its
      * default through [merge]; an override without a default is used as is.
      */
-    fun resolve(tabId: String?, merge: (override: A, default: A) -> A): Map<ActionKey, A> {
+    fun resolve(tabId: String?, merge: (tabAction: A, defaultAction: A) -> A): Map<ActionKey, A> {
         val tabOverrides = tabId?.let { overrides[it] }.orEmpty()
         if (tabOverrides.isEmpty()) return defaults
         val resolved = LinkedHashMap<ActionKey, A>(defaults)
-        for ((key, override) in tabOverrides) {
-            val default = defaults[key]
-            resolved[key] = if (default == null) override else merge(override, default)
+        for ((key, tabAction) in tabOverrides) {
+            val defaultAction = defaults[key]
+            resolved[key] = if (defaultAction == null) tabAction else merge(tabAction, defaultAction)
         }
         return resolved
     }

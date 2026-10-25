@@ -9,18 +9,22 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Copies add-on packages picked from a content:// URI into the app cache, because GeckoView can only
  * install from https, file: and resource: URIs. All methods block: call them on `Dispatchers.IO`.
  */
+@Singleton
 internal class XpiFileCopier @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     private val directory: File get() = File(context.cacheDir, DIRECTORY)
+    private var staleCopiesCleared = false
 
     /** Copies [contentUri] into a new cache file and returns it; the caller deletes it after installing. */
     fun copyToCache(contentUri: String): File {
+        clearStaleCopies()
         val dir = directory
         if (!dir.isDirectory && !dir.mkdirs()) throw IOException("Cannot create $dir")
         val target = File.createTempFile(PREFIX, SUFFIX, dir)
@@ -40,8 +44,14 @@ internal class XpiFileCopier @Inject constructor(
         return target
     }
 
-    /** Removes copies left behind by an install that was interrupted (e.g. the app was killed). */
-    fun clearCache() {
+    /**
+     * Removes copies left behind by an install that was interrupted (e.g. the app was killed). Runs once
+     * per process, before the first new copy, so it never deletes a file an install is still using.
+     */
+    @Synchronized
+    fun clearStaleCopies() {
+        if (staleCopiesCleared) return
+        staleCopiesCleared = true
         directory.listFiles()?.forEach { it.delete() }
     }
 

@@ -165,13 +165,13 @@ internal class AddonsManager @Inject constructor(
     fun start() {
         if (started) return
         started = true
-        val controller = controller
-        controller.setPromptDelegate(prompts)
-        controller.setAddonManagerDelegate(addonManagerDelegate)
-        controller.setDebuggerDelegate(debuggerDelegate)
+        val webExtensions = controller
+        webExtensions.setPromptDelegate(prompts)
+        webExtensions.setAddonManagerDelegate(addonManagerDelegate)
+        webExtensions.setDebuggerDelegate(debuggerDelegate)
         scope.launch(Dispatchers.IO) {
             preferences.load()
-            fileCopier.clearCache()
+            fileCopier.clearStaleCopies()
         }
         refresh()
         scheduleUpdateCheck()
@@ -211,10 +211,19 @@ internal class AddonsManager @Inject constructor(
     override fun installUBlockOrigin() {
         scope.launch(Dispatchers.Main.immediate) {
             val existing = installed.byId(AddonsRepository.UBLOCK_ORIGIN_ID)
-            when {
-                existing == null -> performInstall(AddonsRepository.UBLOCK_ORIGIN_XPI)
-                !existing.metaData.enabled -> setEnabled(existing.id, enabled = true)
-                else -> _installState.value = AddonInstallState.Installed(existing.displayName)
+            if (existing == null) {
+                performInstall(AddonsRepository.UBLOCK_ORIGIN_XPI)
+            } else if (!existing.metaData.enabled) {
+                val name = existing.displayName
+                modify(
+                    existing.id,
+                    AddonOperation.ENABLE,
+                    onSuccess = { _installState.value = AddonInstallState.Installed(name) },
+                ) { controller, extension ->
+                    controller.enable(extension, WebExtensionController.EnableSource.USER)
+                }
+            } else {
+                _installState.value = AddonInstallState.Installed(existing.displayName)
             }
         }
     }
@@ -397,7 +406,7 @@ internal class AddonsManager @Inject constructor(
         scope.launch(Dispatchers.IO) {
             delay(UPDATE_CHECK_DELAY_MS)
             val now = System.currentTimeMillis()
-            if (now - preferences.lastUpdateCheck() in 0L until UPDATE_INTERVAL_MS) return@launch
+            if ((now - preferences.lastUpdateCheck()) in 0L until UPDATE_INTERVAL_MS) return@launch
             preferences.setLastUpdateCheck(now)
             withContext(Dispatchers.Main.immediate) { updateAll() }
         }

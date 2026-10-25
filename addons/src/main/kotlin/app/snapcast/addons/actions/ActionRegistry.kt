@@ -132,10 +132,10 @@ internal class ActionRegistry @Inject constructor(
     }
 
     /** Tab override over the extension default (both come from the same extension and action type). */
-    private fun merge(override: WebExtension.Action, default: WebExtension.Action): WebExtension.Action = try {
-        override.withDefault(default)
+    private fun merge(tabAction: WebExtension.Action, defaultAction: WebExtension.Action): WebExtension.Action = try {
+        tabAction.withDefault(defaultAction)
     } catch (e: IllegalArgumentException) {
-        override
+        tabAction
     }
 
     private companion object {

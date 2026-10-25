@@ -46,6 +46,7 @@ data class AddonPermissionPrompt(
     val icon: Bitmap?,
     /** Human-readable permission descriptions. */
     val permissions: List<String>,
+    /** Human-readable host access descriptions, e.g. "Access your data for all websites". */
     val origins: List<String>,
     /** False for optional/update prompts where the private-browsing choice does not apply. */
     val offerPrivateBrowsing: Boolean,

@@ -24,6 +24,10 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v5
 
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
       - name: Detector extension tests (Node)
         run: node --test 'detection/src/test/js/**/*.test.js'
 

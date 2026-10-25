@@ -6,7 +6,10 @@ import android.content.ContextWrapper
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.flow.Flow
 
@@ -28,3 +31,6 @@ internal tailrec fun Context.hostActivity(): Activity? = when (this) {
 
 /** The hosting [FragmentActivity] (the Cast device chooser needs one), or null. */
 internal fun Context.hostFragmentActivity(): FragmentActivity? = hostActivity() as? FragmentActivity
+
+/** Gives a control without visible text (sliders and the like) an accessibility label. */
+internal fun Modifier.semanticsLabel(label: String): Modifier = semantics { contentDescription = label }
