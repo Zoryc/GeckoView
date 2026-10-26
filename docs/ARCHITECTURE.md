@@ -78,6 +78,25 @@ keys, subtitles and DASH templates also hit the proxy (signed /u/ and /b/ routes
   `mediaPlayback`) which also holds Wi-Fi + wake locks and owns the media notification/MediaSession.
 * "Cast directly" skips the proxy when no headers are needed (or when the proxy is disabled).
 
+## Efficiency rules
+
+Snapcast runs next to a full browser engine on a phone, often on battery. Every feature follows these rules:
+
+* **No work nobody sees.** Expensive work (thumbnail generation, playlist inspection, probing) runs on
+  demand: when the video sheet is open, for visible rows, or when the user acts. Nothing polls in the
+  background, and finished or abandoned work is cancelled.
+* **Cheapest source first.** Use what the page already provides (poster, og:image, playlist attributes)
+  before making requests; never download media just to describe it, and read at most the first bytes
+  when sniffing.
+* **Bounded and cached.** Network work has timeouts, size caps and concurrency limits; results are
+  cached per URL for the page's lifetime; nothing grows without bound (per-tab state is dropped with the tab).
+* **Detector stays light.** The extension debounces DOM scans, filters requests by URL/type before
+  doing anything else, and never inspects response bodies of non-media requests.
+* **Idle means idle.** The casting service holds wake locks only while playing, the proxy only runs
+  during a cast, and private-tab data is never written to disk.
+* **Measure before adding cost.** A change that adds requests, CPU or memory on the browsing path
+  states its cost and why it is worth it.
+
 ## Reference material
 
 * GeckoView 158 public API: `mobile/android/geckoview/api.txt` at tag `FIREFOX_RELEASE_158_END` (exact signatures). Sources and the official example app
