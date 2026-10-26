@@ -85,7 +85,7 @@ interface AddonsRepository {
 
     fun refresh()
 
-    /** Installs from an https .xpi URL (AMO) or a file:// URI. Permission prompt is shown first. */
+    /** Installs from an https .xpi URL (AMO), a file:// URI or a content:// URI. Permission prompt is shown first. */
     fun install(url: String)
 
     fun installUBlockOrigin()

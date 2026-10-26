@@ -1,6 +1,7 @@
 package app.snapcast.ui.util
 
 import app.snapcast.browser.BrowserPrompt.DateTimeType
+import java.time.DateTimeException
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -95,17 +96,30 @@ object HtmlDateTime {
         null
     }
 
+    /** Largest year of a valid HTML date (the spec's maximum is 275760-09-13). */
+    private const val MAX_HTML_YEAR = 275_760
+
     private val weekPattern = Regex("""^(\d{4,})-W(\d{2})$""", RegexOption.IGNORE_CASE)
 
+    /**
+     * Gecko sanitizes the input's value but passes min/max through raw, so a page can send any year here.
+     * Years outside the HTML date range are rejected before java.time sees them (LocalDate.of throws above
+     * Year.MAX_VALUE, and week arithmetic near it overflows), so a hostile bound cannot crash the picker.
+     */
     private fun parseWeek(text: String): LocalDate? {
         val match = weekPattern.matchEntire(text) ?: return null
         val year = match.groupValues[1].toIntOrNull() ?: return null
+        if (year < 1 || year > MAX_HTML_YEAR) return null
         val week = match.groupValues[2].toIntOrNull() ?: return null
-        // January 4th is always in ISO week 1 of its week-based year.
-        val reference = LocalDate.of(year, 1, 4)
-        val maxWeek = reference.range(IsoFields.WEEK_OF_WEEK_BASED_YEAR).maximum
-        if (week < 1 || week > maxWeek) return null
-        return reference.with(IsoFields.WEEK_OF_WEEK_BASED_YEAR, week.toLong()).with(DayOfWeek.MONDAY)
+        return try {
+            // January 4th is always in ISO week 1 of its week-based year.
+            val reference = LocalDate.of(year, 1, 4)
+            val maxWeek = reference.range(IsoFields.WEEK_OF_WEEK_BASED_YEAR).maximum
+            if (week < 1 || week > maxWeek) return null
+            reference.with(IsoFields.WEEK_OF_WEEK_BASED_YEAR, week.toLong()).with(DayOfWeek.MONDAY)
+        } catch (e: DateTimeException) {
+            null
+        }
     }
 
     private fun parseTime(text: String): LocalTime? = try {

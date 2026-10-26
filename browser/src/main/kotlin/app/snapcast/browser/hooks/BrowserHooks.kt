@@ -31,11 +31,14 @@ internal class BrowserHooks @Inject constructor(
         }
     }
 
-    /** True when one interceptor consumed the load (the rest are not asked). */
-    fun interceptLoad(tabId: String, url: String, isTopLevel: Boolean): Boolean =
+    /**
+     * True when one interceptor consumed the load (the rest are not asked). [userInitiated] is passed
+     * through unchanged (see [LoadInterceptor.interceptLoad]).
+     */
+    fun interceptLoad(tabId: String, url: String, isTopLevel: Boolean, userInitiated: Boolean): Boolean =
         loadInterceptors.get().any { interceptor ->
             try {
-                interceptor.interceptLoad(tabId, url, isTopLevel)
+                interceptor.interceptLoad(tabId, url, isTopLevel, userInitiated)
             } catch (e: RuntimeException) {
                 Log.e(TAG, "LoadInterceptor ${interceptor.javaClass.name} failed", e)
                 false

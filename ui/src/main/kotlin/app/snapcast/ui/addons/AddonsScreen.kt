@@ -70,7 +70,6 @@ import app.snapcast.ui.shared.ConfirmDialog
 import app.snapcast.ui.shared.EmptyState
 import app.snapcast.ui.shared.ScreenScaffold
 import app.snapcast.ui.shared.SectionHeader
-import app.snapcast.ui.shared.SnackbarMessages
 import kotlinx.coroutines.launch
 
 /** addons.mozilla.org listing for Firefox for Android. */
@@ -88,8 +87,6 @@ fun AddonsScreen(onBack: () -> Unit, onOpenUrl: (String) -> Unit) {
     val context = LocalContext.current
     var expandedId by rememberSaveable { mutableStateOf<String?>(null) }
     var removeId by rememberSaveable { mutableStateOf<String?>(null) }
-
-    SnackbarMessages(viewModel.messages, snackbarHostState)
 
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.installFromFile(uri)
@@ -263,16 +260,18 @@ private fun InstallSourcesCard(installing: Boolean, onBrowse: () -> Unit, onInst
                 )
             }
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onBrowse, modifier = Modifier.weight(1f)) {
+            // Stacked full-width buttons, so neither label is ever cut off (side by side, "Browse add-ons" was
+            // truncated on common phone widths and in longer translations).
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onBrowse, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.Storefront, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                     Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                    Text(stringResource(R.string.ui_screens_addons_browse), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(stringResource(R.string.ui_screens_addons_browse))
                 }
-                OutlinedButton(onClick = onInstallFromFile, enabled = !installing, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = onInstallFromFile, enabled = !installing, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                     Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                    Text(stringResource(R.string.ui_screens_addons_from_file), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(stringResource(R.string.ui_screens_addons_from_file))
                 }
             }
         }

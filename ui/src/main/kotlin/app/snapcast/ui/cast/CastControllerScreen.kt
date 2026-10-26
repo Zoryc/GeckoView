@@ -82,6 +82,7 @@ import app.snapcast.cast.RemotePlaybackState
 import app.snapcast.cast.RemotePlayerState
 import app.snapcast.core.util.Formatters
 import app.snapcast.ui.R
+import app.snapcast.ui.components.rememberCastPosterRequest
 import app.snapcast.ui.shared.EmptyState
 import app.snapcast.ui.shared.SnackbarMessages
 import app.snapcast.ui.shared.semanticsLabel
@@ -358,7 +359,7 @@ private fun Artwork(posterUrl: String?, modifier: Modifier = Modifier) {
         )
         if (posterUrl != null) {
             AsyncImage(
-                model = posterUrl,
+                model = rememberCastPosterRequest(posterUrl),
                 contentDescription = stringResource(R.string.ui_screens_cast_artwork),
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,

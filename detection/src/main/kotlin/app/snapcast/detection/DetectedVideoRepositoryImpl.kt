@@ -102,8 +102,9 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
         ready.value = isReady
     }
 
+    /** The only place a tab's detection state is created: events for unknown (closed) tabs are dropped. */
     fun onTabOpened(tabId: String, isPrivate: Boolean) {
-        tabFor(tabId, isPrivate)
+        tabs.getOrPut(tabId) { TabDetection(tabId, isPrivate, clock) }
     }
 
     fun onTabClosed(tabId: String) {
@@ -121,10 +122,7 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
 
     fun onLocationChange(tabId: String, url: String) {
         val tab = tabs[tabId] ?: return
-        if (tab.onLocationChange(url) && DocumentUrls.isDirectMedia(url)) {
-            addReports(tab, listOf(DocumentUrls.directMediaReport(url, clock())))
-            publish()
-        }
+        if (tab.onLocationChange(url) && DocumentUrls.isDirectMedia(url)) confirmDirectMedia(tab, url)
     }
 
     fun markDrm(tabId: String, info: DrmInfo) {
@@ -143,7 +141,9 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
     // DetectorMessageSink (main thread).
 
     override fun onPortConnected(tabId: String, isPrivate: Boolean, port: WebExtension.Port) {
-        val tab = tabFor(tabId, isPrivate)
+        // Unknown tab: already closed, a late connect from its dying session. Re-creating its state here
+        // would keep it (private-tab URLs and cookies included) for the life of the process.
+        val tab = tabs[tabId] ?: return
         tab.onPortConnected(port)
         // Answering right away tells the content script that the app listens: it then replays what it
         // posted before this delegate was attached. The rescan also catches elements found meanwhile.
@@ -157,7 +157,7 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
     }
 
     override fun onDetectorMessage(tabId: String, isPrivate: Boolean, message: DetectorMessage) {
-        val tab = tabFor(tabId, isPrivate)
+        val tab = tabs[tabId] ?: return // A late message after onTabClosed.
         when (message) {
             is HelloMessage -> if (DocumentUrls.isNewDocument(message.url, tab.collector.pageUrl, tab.lastLocation)) {
                 tab.resetDocument(message.url)
@@ -170,9 +170,6 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
         applyMediaTitle(tab)
         publish()
     }
-
-    private fun tabFor(tabId: String, isPrivate: Boolean): TabDetection =
-        tabs.getOrPut(tabId) { TabDetection(tabId, isPrivate, clock) }
 
     private fun addReports(tab: TabDetection, reports: List<MediaReport>) {
         for (report in reports) {
@@ -187,6 +184,36 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
         for (video in tab.collector.videos) {
             if (video.title.isNullOrBlank() || video.title == video.pageTitle) {
                 tab.collector.update(video.id) { it.copy(title = title) }
+            }
+        }
+    }
+
+    /**
+     * The top-level document's URL looks like a stream: it is listed once a probe (off the main thread)
+     * confirms it is media. Pages such as https://commons.wikimedia.org/wiki/File:Movie.webm are HTML.
+     */
+    private fun confirmDirectMedia(tab: TabDetection, url: String) {
+        val known = tab.collector.videos
+        if (DocumentUrls.isListed(url, known)) return
+        val tabId = tab.tabId
+        val generation = tab.generation
+        val target = DocumentUrls.probeTarget(url, tabId, tab.isPrivate, known)
+        scope.launch(Dispatchers.IO) {
+            val confirmed = try {
+                inspectionPermits.withPermit { inspector.confirmDirectMedia(target) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Probe of $url failed", e)
+                null
+            }
+            if (confirmed == null) return@launch
+            withContext(Dispatchers.Main.immediate) {
+                // Dropped when the tab closed (or was re-created after a crash) or moved on to another document.
+                if (tabs[tabId] !== tab || tab.generation != generation) return@withContext
+                addReports(tab, listOf(DocumentUrls.directMediaReport(url, clock(), confirmed.mimeType)))
+                applyMediaTitle(tab)
+                publish()
             }
         }
     }

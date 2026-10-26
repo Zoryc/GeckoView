@@ -66,6 +66,62 @@ class CastMediaFactoryTest {
     }
 
     @Test
+    fun `a variant with separate audio renditions casts the master playlist`() {
+        val variant = VideoVariant(url = "https://media.example.com/v5/prog_index.m3u8", height = 1080, separateAudio = true)
+        val proxy = FakeMediaProxy()
+        CastMediaFactory.proxied(hls, variant, subtitle = null, proxy = proxy)
+
+        assertThat(proxy.streams.single().url).isEqualTo(hls.url)
+        assertThat(CastMediaFactory.direct(hls, variant, subtitle = null).contentUrl).isEqualTo(hls.url)
+    }
+
+    @Test
+    fun `a variant on another host gets the captured cookie only for the master host`() {
+        val video = hls.copy(
+            headers = MediaHeaders(
+                referer = "https://www.example.com/watch",
+                cookie = "sid=42",
+                extra = mapOf("Authorization" to "Bearer t"),
+            ),
+        )
+        val variant = VideoVariant(url = "https://cdn.other.net/720p.m3u8", height = 720)
+        val proxy = FakeMediaProxy()
+        CastMediaFactory.proxied(video, variant, subtitle = null, proxy = proxy)
+
+        val request = proxy.streams.single()
+        assertThat(request.url).isEqualTo(variant.url)
+        assertThat(request.headers.keys.map { it.lowercase() }).containsNoneOf("cookie", "authorization")
+        assertThat(request.headers).containsEntry("Referer", "https://www.example.com/watch")
+        assertThat(request.cookiesByHost).containsEntry("media.example.com", "sid=42")
+        assertThat(request.cookiesByHost).containsEntry("subs.example.org", "sub=1")
+    }
+
+    @Test
+    fun `HLS subtitle renditions are not side-loaded and keep the other ids`() {
+        val rendition = SubtitleTrack(
+            id = "r",
+            url = "https://media.example.com/s1/en/prog_index.m3u8",
+            label = "English",
+            language = "en",
+            format = SubtitleFormat.VTT,
+            isHlsRendition = true,
+        )
+        val video = hls.copy(subtitles = listOf(rendition, english))
+        val proxy = FakeMediaProxy()
+
+        val proxied = CastMediaFactory.proxied(video, variant = null, subtitle = rendition, proxy = proxy)
+        assertThat(proxy.subtitles.filterIsInstance<SubtitleSource.Remote>().map { it.url }).containsExactly(english.url)
+        assertThat(proxied.textTracks.map { it.trackId }).containsExactly(2L)
+        assertThat(proxied.activeTextTrackId).isNull()
+
+        val direct = CastMediaFactory.direct(video, variant = null, subtitle = rendition)
+        assertThat(direct.textTracks.map { it.trackId }).containsExactly(2L)
+        assertThat(direct.activeTextTrackId).isNull()
+        assertThat(CastMediaRules.isProxyableSubtitle(rendition)).isFalse()
+        assertThat(CastMediaRules.isDirectSubtitle(rendition)).isFalse()
+    }
+
+    @Test
     fun `subtitle tracks get stable ids and unusable ones are skipped`() {
         val proxy = FakeMediaProxy()
         val media = CastMediaFactory.proxied(hls, variant = null, subtitle = french, proxy = proxy)

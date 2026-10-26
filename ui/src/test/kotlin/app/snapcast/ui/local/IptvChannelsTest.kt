@@ -67,6 +67,22 @@ class IptvChannelsTest {
     }
 
     @Test
+    fun `a probed kind replaces the URL guess`() {
+        val ts = IptvChannels.toDetectedVideo(sport, null, 0, ChannelKind(StreamType.TS, "video/mp2t", live = true))
+        assertThat(ts.type).isEqualTo(StreamType.TS)
+        assertThat(ts.mimeType).isEqualTo("video/mp2t")
+        assertThat(ts.isLive).isTrue()
+
+        val vod = IptvChannels.toDetectedVideo(sport, null, 0, ChannelKind(StreamType.MP4, null, live = false))
+        assertThat(vod.type).isEqualTo(StreamType.MP4)
+        assertThat(vod.isLive).isFalse()
+
+        val guessed = IptvChannels.toDetectedVideo(sport, null, 0)
+        assertThat(guessed.type).isEqualTo(StreamType.HLS)
+        assertThat(guessed.mimeType).isNull()
+    }
+
+    @Test
     fun `progressive channels are not marked live`() {
         val video = IptvChannels.toDetectedVideo(misc, playlistName = null, nowMs = 0)
         assertThat(video.type).isEqualTo(StreamType.MP4)

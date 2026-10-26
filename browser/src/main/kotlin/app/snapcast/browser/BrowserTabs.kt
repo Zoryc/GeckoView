@@ -3,6 +3,7 @@ package app.snapcast.browser
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.WebResponse
 
 /**
  * Tab management: one [GeckoSession] per tab, all on the shared runtime. All methods must be called
@@ -65,6 +66,20 @@ interface BrowserTabs {
     fun setDesktopMode(tabId: String, enabled: Boolean)
 
     fun exitFullscreen(tabId: String)
+
+    /**
+     * Shows the web dialogs and pickers (alert/confirm/prompt, `<select>`, file, date and color inputs) of
+     * a session that is not a tab, e.g. an extension popup. They are not tied to a tab
+     * ([BrowserPrompt.tabId] is null); [dismissPrompts] with the same [ownerId] cancels the pending ones.
+     * Call before the session opens.
+     */
+    fun attachPromptDelegate(session: GeckoSession, ownerId: String)
+
+    /** Cancels the pending dialogs of sessions set up with [attachPromptDelegate] for [ownerId]. */
+    fun dismissPrompts(ownerId: String)
+
+    /** Saves a download (`ContentDelegate.onExternalResponse`) of a session that is not a tab. */
+    fun enqueueDownload(response: WebResponse)
 
     /** Restores tabs saved from the previous run (or opens one home tab). Called once by the UI on start. */
     fun restoreTabs()

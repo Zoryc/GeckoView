@@ -413,7 +413,7 @@ private fun rememberVideoActions(
                     scope.launch { snackbarHostState.showSnackbar(noAppMessage) }
                 }
             },
-            addToQueue = { video -> if (video.isDrmProtected) onExplainDrm() else viewModel.addToQueue(video) },
+            addToQueue = { video -> if (video.isDrmProtected) onExplainDrm() else castGate { viewModel.addToQueue(video) } },
             explainDrm = { onExplainDrm() },
             canCastDirectly = viewModel::canCastDirectly,
         )

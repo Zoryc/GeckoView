@@ -15,16 +15,16 @@ internal class NetworkHelper @Inject constructor(
 ) {
     /**
      * IPv4 address of the phone on its Wi-Fi (or Ethernet) network, or null when not on such a network.
-     * The active network comes first; other networks are checked so a VPN on top of Wi-Fi still works.
+     * The active network comes first; VPNs are skipped and the other networks checked, so a VPN on top of
+     * Wi-Fi still yields the Wi-Fi address (a tunnel address is unreachable from the LAN).
      */
     fun lanIpv4(): String? {
         val connectivity = context.getSystemService(ConnectivityManager::class.java) ?: return null
         return try {
             candidateNetworks(connectivity).firstNotNullOfOrNull { network ->
                 val capabilities = connectivity.getNetworkCapabilities(network) ?: return@firstNotNullOfOrNull null
-                val isLan = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
-                if (!isLan) return@firstNotNullOfOrNull null
+                val transports = LanAddressPicker.RELEVANT_TRANSPORTS.filterTo(HashSet()) { capabilities.hasTransport(it) }
+                if (!LanAddressPicker.isLanTransport(transports)) return@firstNotNullOfOrNull null
                 val addresses = connectivity.getLinkProperties(network)?.linkAddresses.orEmpty().map { it.address }
                 LanAddressPicker.pick(addresses)
             }

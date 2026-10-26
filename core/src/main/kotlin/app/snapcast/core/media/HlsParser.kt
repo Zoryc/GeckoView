@@ -310,23 +310,37 @@ object HlsParser {
         }
     }
 
-    /** Subtitle tracks advertised by a master playlist (SUBTITLES renditions), as [SubtitleTrack]s with format VTT. */
+    /**
+     * Subtitle tracks advertised by a master playlist (SUBTITLES renditions), as [SubtitleTrack]s with format
+     * VTT flagged [SubtitleTrack.isHlsRendition]: each URL is a media playlist of WebVTT segments that players
+     * get from the master itself. Renditions whose URI is not http(s) (a page could name file:// or content://
+     * URIs) are dropped.
+     */
     fun subtitleTracks(master: HlsPlaylist.Master): List<SubtitleTrack> =
         master.subtitleRenditions.mapNotNull { rendition ->
-            val url = rendition.url ?: return@mapNotNull null
+            val url = rendition.url?.takeIf { UrlUtils.isHttp(it) } ?: return@mapNotNull null
             SubtitleTrack(
                 id = UrlUtils.stableId(url),
                 url = url,
                 label = rendition.name?.takeIf { it.isNotBlank() },
                 language = rendition.language,
                 format = SubtitleFormat.VTT,
+                isHlsRendition = true,
             )
         }.distinctBy { it.id }
 
-    /** Variants mapped to [VideoVariant], best first, de-duplicated by resolution+bandwidth. */
+    /**
+     * Variants mapped to [VideoVariant], best first, de-duplicated by resolution+bandwidth. A variant whose
+     * AUDIO group has renditions with their own URI is marked [VideoVariant.separateAudio].
+     */
     fun videoVariants(master: HlsPlaylist.Master): List<VideoVariant> =
         master.variants
             .sortedWith(compareByDescending<HlsVariant> { it.height ?: -1 }.thenByDescending { it.bandwidth ?: -1L })
             .distinctBy { Triple(it.width, it.height, it.bandwidth) }
-            .map { it.toVideoVariant() }
+            .map { variant -> variant.toVideoVariant().copy(separateAudio = hasSeparateAudio(master, variant)) }
+
+    private fun hasSeparateAudio(master: HlsPlaylist.Master, variant: HlsVariant): Boolean {
+        val group = variant.audioGroup ?: return false
+        return master.renditions.any { it.type == "AUDIO" && it.groupId == group && it.url != null }
+    }
 }

@@ -2,7 +2,9 @@ package app.snapcast.cast.controller
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import android.view.View
@@ -10,6 +12,7 @@ import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.mediarouter.app.MediaRouteButton
 import androidx.mediarouter.app.MediaRouteDialogFactory
@@ -43,7 +46,6 @@ import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.SubtitleFormat
 import app.snapcast.core.model.SubtitleTrack
 import app.snapcast.core.model.VideoVariant
-import app.snapcast.core.util.UrlUtils
 import app.snapcast.data.di.ApplicationScope
 import app.snapcast.data.playback.PlaybackPositionRepository
 import app.snapcast.data.settings.SettingsRepository
@@ -55,6 +57,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -65,10 +68,13 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -80,6 +86,10 @@ import javax.inject.Singleton
  * (a request that ran after a device connected, receiver playback errors, the end of a session) plus
  * [CastEvent.Started] / [CastEvent.Queued] for every success; errors returned from a call are not
  * emitted again.
+ *
+ * Requests that talk to the receiver run in the application scope ([detached]): the caller is usually a
+ * screen's viewModelScope, and leaving the screen while the receiver loads must not abandon a load that
+ * was already sent (the casting service, the pending queue and private-tab bookkeeping would be skipped).
  */
 @Singleton
 internal class CastControllerImpl @Inject constructor(
@@ -124,7 +134,15 @@ internal class CastControllerImpl @Inject constructor(
         data class Local(val uri: Uri, val title: String?, val mimeType: String?) : CastRequest {
             override val startPositionMs: Long? get() = null
         }
+
+        /** The pending queue itself, in order (taken from it once the receiver has loaded it). */
+        data object Queue : CastRequest {
+            override val startPositionMs: Long? get() = null
+        }
     }
+
+    /** What one load sends: [items] in order, of which [consumed] come from the pending queue. */
+    private class Batch(val items: List<CastMedia>, val consumed: List<PendingQueueItem>)
 
     /** Last known position of the item playing on the receiver. */
     private data class Progress(val url: String, val positionMs: Long, val durationMs: Long, val isLive: Boolean)
@@ -141,6 +159,7 @@ internal class CastControllerImpl @Inject constructor(
     private var finishedUrl: String? = null
     private var lastReceiverErrorKey: String? = null
     private var serviceRequested = false
+    private var inBandSubtitleSelection: Job? = null
     private val privateUrls = HashSet<String>()
 
     private val settings: AppSettings get() = settingsRepository.settings.value
@@ -149,6 +168,15 @@ internal class CastControllerImpl @Inject constructor(
         scope.launch(Dispatchers.Main.immediate) { observeConnection() }
         scope.launch(Dispatchers.Main.immediate) { observePlayback() }
         scope.launch(Dispatchers.Main.immediate) { savePositionsWhilePlaying() }
+        scope.launch(Dispatchers.Main.immediate) {
+            // Retries a casting service that couldn't start from the background once the app is visible again
+            // (playback updates alone stop while the receiver is paused).
+            ProcessLifecycleOwner.get().lifecycle.addObserver(
+                LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_START) ensureServiceForResumedSession(chromecast.playback.value)
+                },
+            )
+        }
     }
 
     // region Casting
@@ -164,12 +192,10 @@ internal class CastControllerImpl @Inject constructor(
         if (castContextProvider.await() == null) {
             return@withContext failure(CastErrorKind.UNAVAILABLE, R.string.cast_error_unavailable)
         }
-        if (usesProxy(direct) && networkHelper.lanIpv4() == null) {
-            return@withContext failure(CastErrorKind.NO_WIFI, R.string.cast_error_no_wifi)
-        }
+        if (usesProxy(direct)) proxyPrecondition()?.let { return@withContext it }
         val request = CastRequest.Remote(video, variant, subtitle, direct, startPositionMs)
         if (chromecast.connectionState.value != CastConnectionState.CONNECTED) return@withContext defer(request)
-        execute(request)
+        detached { execute(request) }
     }
 
     override suspend fun castLocalFile(uri: Uri, title: String?, mimeType: String?): CastResult =
@@ -177,21 +203,39 @@ internal class CastControllerImpl @Inject constructor(
             if (castContextProvider.await() == null) {
                 return@withContext failure(CastErrorKind.UNAVAILABLE, R.string.cast_error_unavailable)
             }
-            if (networkHelper.lanIpv4() == null) {
-                return@withContext failure(CastErrorKind.NO_WIFI, R.string.cast_error_no_wifi)
-            }
+            proxyPrecondition()?.let { return@withContext it }
             withContext(Dispatchers.IO) { localMedia.keepAccess(uri) }
             val request = CastRequest.Local(uri, title, mimeType)
             if (chromecast.connectionState.value != CastConnectionState.CONNECTED) return@withContext defer(request)
-            execute(request)
+            detached { execute(request) }
         }
+
+    override suspend fun castPendingQueue(): CastResult = withContext(Dispatchers.Main.immediate) {
+        if (_pendingQueue.value.none { !it.video.isDrmProtected }) {
+            return@withContext failure(CastErrorKind.UNSUPPORTED, R.string.cast_error_queue_empty)
+        }
+        if (castContextProvider.await() == null) {
+            return@withContext failure(CastErrorKind.UNAVAILABLE, R.string.cast_error_unavailable)
+        }
+        if (usesProxy(direct = false)) proxyPrecondition()?.let { return@withContext it }
+        if (chromecast.connectionState.value != CastConnectionState.CONNECTED) {
+            return@withContext defer(CastRequest.Queue)
+        }
+        detached { execute(CastRequest.Queue) }
+    }
 
     override suspend fun addToQueue(video: DetectedVideo, playNext: Boolean): CastResult =
         withContext(Dispatchers.Main.immediate) {
             if (video.isDrmProtected) return@withContext failure(CastErrorKind.DRM, R.string.cast_error_drm)
-            val casting = chromecast.connectionState.value == CastConnectionState.CONNECTED &&
-                chromecast.playback.value != null
-            if (!casting) {
+            val connected = chromecast.connectionState.value == CastConnectionState.CONNECTED
+            val state = chromecast.playback.value
+            if (connected && state != null && !loadInFlight && ReceiverQueue.isEnded(state)) {
+                // The receiver's queue is over (finished, stopped or failed): an appended item would never play,
+                // so play it now. This resumes it, sends the pending queue along and starts the casting service.
+                val request = CastRequest.Remote(video, variant = null, subtitle = null, direct = false, startPositionMs = null)
+                return@withContext detached { execute(request) }
+            }
+            if (!connected || state == null) {
                 _pendingQueue.update { queue ->
                     val item = PendingQueueItem(PendingQueue.newKey(video, System.currentTimeMillis(), queue), video)
                     PendingQueue.add(queue, item, playNext)
@@ -199,28 +243,36 @@ internal class CastControllerImpl @Inject constructor(
                 _events.tryEmit(CastEvent.Queued(video.displayTitle))
                 return@withContext CastResult.Success
             }
-            proxyManager.acquire()
-            try {
-                val media = buildRemote(video, variant = null, subtitle = null, direct = false)
-                val result = if (playNext) chromecast.insertNext(media) else chromecast.appendToQueue(listOf(media))
-                if (result.isFailure) {
-                    Log.w(TAG, "Queueing failed", result.exceptionOrNull())
-                    return@withContext failure(CastErrorKind.LOAD_FAILED, R.string.cast_error_queue)
-                }
-                if (video.isPrivate) privateUrls += video.url
-                _events.tryEmit(CastEvent.Queued(media.title))
-                CastResult.Success
-            } catch (failure: CastFailure) {
-                CastResult.Error(failure.kind, failure.message)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: RuntimeException) {
-                Log.w(TAG, "Queueing failed", e)
-                failure(CastErrorKind.LOAD_FAILED, R.string.cast_error_queue)
-            } finally {
-                proxyManager.release()
-            }
+            detached { appendToReceiver(video, playNext) }
         }
+
+    /** Appends [video] to (or, with [playNext], inserts it into) the receiver's queue. */
+    private suspend fun appendToReceiver(video: DetectedVideo, playNext: Boolean): CastResult {
+        proxyManager.acquire()
+        try {
+            val media = buildRemote(video, variant = null, subtitle = null, direct = false)
+            if (video.isPrivate) privateUrls += video.url
+            // The service keeps the proxy alive for the new item: it may have stopped itself after the previous
+            // item ended, and appendToQueue / insertNext load the item when the receiver holds no media.
+            startPlaybackService()
+            val result = if (playNext) chromecast.insertNext(media) else chromecast.appendToQueue(listOf(media))
+            if (result.isFailure) {
+                Log.w(TAG, "Queueing failed", result.exceptionOrNull())
+                return failure(CastErrorKind.LOAD_FAILED, R.string.cast_error_queue)
+            }
+            _events.tryEmit(CastEvent.Queued(media.title))
+            return CastResult.Success
+        } catch (failure: CastFailure) {
+            return CastResult.Error(failure.kind, failure.message)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Queueing failed", e)
+            return failure(CastErrorKind.LOAD_FAILED, R.string.cast_error_queue)
+        } finally {
+            proxyManager.release()
+        }
+    }
 
     override fun removePending(key: String) {
         _pendingQueue.update { PendingQueue.remove(it, key) }
@@ -240,6 +292,12 @@ internal class CastControllerImpl @Inject constructor(
         if (state == null || current == null) {
             return@withContext failure(CastErrorKind.UNSUPPORTED, R.string.cast_error_nothing_casting)
         }
+        // Detached: leaving the screen after the receiver got the new item must not skip removing the old one.
+        detached { reloadWithLocalSubtitle(uri, state, current) }
+    }
+
+    /** Reloads [current] at its position with the subtitle file [uri] added and enabled. */
+    private suspend fun reloadWithLocalSubtitle(uri: Uri, state: RemotePlaybackState, current: CastMedia): CastResult {
         proxyManager.acquire()
         try {
             val fileName = withContext(Dispatchers.IO) { localMedia.displayName(uri) }
@@ -260,19 +318,19 @@ internal class CastControllerImpl @Inject constructor(
                 positionMs,
                 autoplay = state.playerState != RemotePlayerState.PAUSED,
             )
-            if (result.isFailure) {
+            return if (result.isFailure) {
                 Log.w(TAG, "Reloading with subtitles failed", result.exceptionOrNull())
                 failure(CastErrorKind.LOAD_FAILED, R.string.cast_error_load_failed)
             } else {
                 CastResult.Success
             }
         } catch (failure: CastFailure) {
-            CastResult.Error(failure.kind, failure.message)
+            return CastResult.Error(failure.kind, failure.message)
         } catch (e: CancellationException) {
             throw e
         } catch (e: RuntimeException) {
             Log.w(TAG, "Reloading with subtitles failed", e)
-            failure(CastErrorKind.LOAD_FAILED, R.string.cast_error_load_failed)
+            return failure(CastErrorKind.LOAD_FAILED, R.string.cast_error_load_failed)
         } finally {
             proxyManager.release()
         }
@@ -369,30 +427,41 @@ internal class CastControllerImpl @Inject constructor(
         return CastResult.NeedsDevice
     }
 
+    /**
+     * Runs [block] in the application scope and waits for it. A cancelled caller (a screen that went away)
+     * stops waiting, but the request still completes, including its bookkeeping.
+     */
+    private suspend fun <T> detached(block: suspend () -> T): T =
+        scope.async(Dispatchers.Main.immediate) { block() }.await()
+
     /** Builds the media (plus the pending queue) and loads it on the connected receiver. */
     private suspend fun execute(request: CastRequest): CastResult {
         proxyManager.acquire()
         loadInFlight = true
+        inBandSubtitleSelection?.cancel()
         try {
-            val first = when (request) {
-                is CastRequest.Remote -> buildRemote(request.video, request.variant, request.subtitle, request.direct)
-                is CastRequest.Local -> buildLocal(request)
-            }
-            val queued = buildPendingQueue()
+            val batch = buildBatch(request)
+            val first = batch.items.first()
             val startMs = startPosition(first, request.startPositionMs)
-            val result = chromecast.load(listOf(first) + queued.map { it.second }, 0, startMs, autoplay = true)
+            // Recorded before the load so no position of a private-tab video is saved while it starts playing.
+            if (request is CastRequest.Remote && request.video.isPrivate) privateUrls += request.video.url
+            batch.consumed.forEach { if (it.video.isPrivate) privateUrls += it.video.url }
+            // Started while the app is still visible (Android 12+ refuses it from the background, and the LOAD
+            // reply may only come seconds later); the service holds the proxy from now on and stops itself if
+            // nothing ends up loaded.
+            startPlaybackService()
+            val result = chromecast.load(batch.items, 0, startMs, autoplay = true)
             if (result.isFailure) {
                 Log.w(TAG, "Load failed", result.exceptionOrNull())
                 suppressReceiverErrorsUntil = SystemClock.elapsedRealtime() + RECEIVER_ERROR_SUPPRESS_MS
                 return failure(CastErrorKind.LOAD_FAILED, R.string.cast_error_load_failed)
             }
-            val consumed = queued.mapTo(HashSet()) { it.first.key }
+            val consumed = batch.consumed.mapTo(HashSet()) { it.key }
             _pendingQueue.update { queue -> queue.filterNot { it.key in consumed } }
-            if (request is CastRequest.Remote && request.video.isPrivate) privateUrls += request.video.url
-            queued.forEach { (item, _) -> if (item.video.isPrivate) privateUrls += item.video.url }
             lastReceiverErrorKey = null
             _events.tryEmit(CastEvent.Started(first.title))
-            startPlaybackService()
+            val rendition = (request as? CastRequest.Remote)?.subtitle?.takeIf { it.isHlsRendition }
+            if (rendition != null) selectInBandSubtitle(rendition, first)
             return CastResult.Success
         } catch (failure: CastFailure) {
             return CastResult.Error(failure.kind, failure.message)
@@ -407,8 +476,31 @@ internal class CastControllerImpl @Inject constructor(
         }
     }
 
-    /** Pending items that can be built; the others stay in the app-side queue. */
-    private suspend fun buildPendingQueue(): List<Pair<PendingQueueItem, CastMedia>> {
+    private suspend fun buildBatch(request: CastRequest): Batch = when (request) {
+        is CastRequest.Remote -> {
+            val first = buildRemote(request.video, request.variant, request.subtitle, request.direct)
+            val queued = buildPendingQueue()
+            Batch(listOf(first) + queued.map { it.second }, queued.map { it.first })
+        }
+        is CastRequest.Local -> {
+            val first = buildLocal(request)
+            val queued = buildPendingQueue()
+            Batch(listOf(first) + queued.map { it.second }, queued.map { it.first })
+        }
+        CastRequest.Queue -> {
+            val failures = ArrayList<CastFailure>()
+            val queued = buildPendingQueue(failures)
+            if (queued.isEmpty()) {
+                throw failures.firstOrNull() ?: CastFailure(CastErrorKind.UNSUPPORTED, string(R.string.cast_error_queue_empty))
+            }
+            Batch(queued.map { it.second }, queued.map { it.first })
+        }
+    }
+
+    /** Pending items that can be built; the others stay in the app-side queue (their failures go to [failures]). */
+    private suspend fun buildPendingQueue(
+        failures: MutableList<CastFailure>? = null,
+    ): List<Pair<PendingQueueItem, CastMedia>> {
         val built = ArrayList<Pair<PendingQueueItem, CastMedia>>()
         for (item in _pendingQueue.value) {
             if (item.video.isDrmProtected) continue
@@ -416,6 +508,7 @@ internal class CastControllerImpl @Inject constructor(
                 built += item to buildRemote(item.video, variant = null, subtitle = null, direct = false)
             } catch (failure: CastFailure) {
                 Log.w(TAG, "Skipping queued video: ${failure.message}")
+                failures?.add(failure)
             }
         }
         return built
@@ -458,8 +551,30 @@ internal class CastControllerImpl @Inject constructor(
         )
     }
 
+    /**
+     * Why a proxied cast cannot work right now (no Wi-Fi, or no local network access on Android 17+), or
+     * null. Checked before a request waits for a device, so the user learns it right away.
+     */
+    private fun proxyPrecondition(): CastResult.Error? = when {
+        !hasLocalNetworkAccess() -> failure(CastErrorKind.LOAD_FAILED, R.string.cast_error_local_network)
+        networkHelper.lanIpv4() == null -> failure(CastErrorKind.NO_WIFI, R.string.cast_error_no_wifi)
+        else -> null
+    }
+
+    /**
+     * Android 17 blocks local network traffic (the receiver's connections to the proxy, the proxy's requests
+     * to LAN hosts) for apps targeting it unless ACCESS_LOCAL_NETWORK is granted. The UI asks for it before
+     * casting.
+     */
+    private fun hasLocalNetworkAccess(): Boolean =
+        Build.VERSION.SDK_INT < LOCAL_NETWORK_PERMISSION_SDK ||
+            ContextCompat.checkSelfPermission(context, PERMISSION_ACCESS_LOCAL_NETWORK) == PackageManager.PERMISSION_GRANTED
+
     /** The running proxy bound to the phone's LAN address. */
     private suspend fun lanProxy(): MediaProxy {
+        if (!hasLocalNetworkAccess()) {
+            throw CastFailure(CastErrorKind.LOAD_FAILED, string(R.string.cast_error_local_network))
+        }
         val host = networkHelper.lanIpv4()
             ?: throw CastFailure(CastErrorKind.NO_WIFI, string(R.string.cast_error_no_wifi))
         val proxy = try {
@@ -486,9 +601,13 @@ internal class CastControllerImpl @Inject constructor(
         throw CastFailure(CastErrorKind.PROXY_FAILED, string(R.string.cast_error_proxy))
     }
 
-    /** Subtitles stored on the phone (content:// or file://), read and converted to WebVTT. */
+    /**
+     * Subtitle files the user picked on the phone ([SubtitleTrack.isLocal]: content:// or file://), read and
+     * converted to WebVTT. Only those: any other non-http URL comes from a page or a manifest, and reading it
+     * with the app's permissions would let a page publish the app's private files.
+     */
     private suspend fun readLocalSubtitles(tracks: List<SubtitleTrack>): Map<String, SubtitleSource> {
-        val local = tracks.filter { it.isLocal || !UrlUtils.isHttp(it.url) }
+        val local = tracks.filter { it.isLocal }
         if (local.isEmpty()) return emptyMap()
         return withContext(Dispatchers.IO) {
             local.mapNotNull { track ->
@@ -533,15 +652,41 @@ internal class CastControllerImpl @Inject constructor(
         return ResumePolicy.startPositionMs(requestedMs, resume, media.isLive, saved)
     }
 
+    /**
+     * The service is only marked as requested when the start call succeeds, so a start refused from the
+     * background is retried once the app is visible again ([ensureServiceForResumedSession]).
+     */
     private fun startPlaybackService() {
-        serviceRequested = true
         try {
             ContextCompat.startForegroundService(context, Intent(context, CastPlaybackService::class.java))
+            serviceRequested = true
         } catch (e: IllegalStateException) {
             // Android 12+ refuses foreground services started from the background.
+            serviceRequested = false
             Log.w(TAG, "Couldn't start the casting service", e)
         } catch (e: SecurityException) {
+            serviceRequested = false
             Log.w(TAG, "Couldn't start the casting service", e)
+        }
+    }
+
+    /**
+     * HLS subtitle renditions are never side-loaded (they are playlists the receiver reads from the master
+     * itself). Once the receiver lists the stream's own text tracks, enables the one matching [chosen].
+     */
+    private fun selectInBandSubtitle(chosen: SubtitleTrack, media: CastMedia) {
+        inBandSubtitleSelection?.cancel()
+        val sideLoaded = media.textTracks.mapTo(HashSet()) { it.trackId }
+        inBandSubtitleSelection = scope.launch(Dispatchers.Main.immediate) {
+            val trackId = withTimeoutOrNull(IN_BAND_TRACK_WAIT_MS) {
+                chromecast.playback
+                    .mapNotNull { state ->
+                        state?.takeIf { it.originalUrl == media.originalUrl }
+                            ?.let { CastMediaRules.inBandTextTrack(chosen, it.textTracks, sideLoaded) }
+                    }
+                    .first()
+            } ?: return@launch
+            chromecast.setActiveTextTrack(trackId)
         }
     }
 
@@ -623,7 +768,10 @@ internal class CastControllerImpl @Inject constructor(
         _events.tryEmit(CastEvent.Error(CastErrorKind.LOAD_FAILED, string(R.string.cast_error_playback)))
     }
 
-    /** A session resumed after an app restart gets its notification back while the app is visible. */
+    /**
+     * A session resumed after an app restart, or one whose casting service could not be started from the
+     * background, gets its service (proxy, locks, notification) back while the app is visible.
+     */
     private fun ensureServiceForResumedSession(state: RemotePlaybackState?) {
         if (state == null || serviceRequested) return
         if (chromecast.connectionState.value != CastConnectionState.CONNECTED) return
@@ -695,8 +843,13 @@ internal class CastControllerImpl @Inject constructor(
         const val PENDING_REQUEST_TTL_MS = 2 * 60_000L
         const val SAVE_INTERVAL_MS = 5_000L
         const val RECEIVER_ERROR_SUPPRESS_MS = 5_000L
-        const val IDLE_REASON_FINISHED = "FINISHED"
-        const val IDLE_REASON_ERROR = "ERROR"
+        const val IN_BAND_TRACK_WAIT_MS = 20_000L
+        const val IDLE_REASON_FINISHED = ReceiverQueue.IDLE_REASON_FINISHED
+        const val IDLE_REASON_ERROR = ReceiverQueue.IDLE_REASON_ERROR
+
+        /** android.Manifest.permission.ACCESS_LOCAL_NETWORK (Android 17, API 37). */
+        const val PERMISSION_ACCESS_LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWORK"
+        const val LOCAL_NETWORK_PERMISSION_SDK = 37
         val ACTIVE_STATES = setOf(RemotePlayerState.PLAYING, RemotePlayerState.PAUSED, RemotePlayerState.BUFFERING)
     }
 }

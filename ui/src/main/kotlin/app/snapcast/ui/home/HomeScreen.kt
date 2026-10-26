@@ -1,6 +1,7 @@
 package app.snapcast.ui.home
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.Search
@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -183,17 +184,26 @@ private fun HomeHeader(isPrivate: Boolean, onSubmit: (String) -> Unit) {
     }
 }
 
+/** The Snapcast logo above the title; private tabs keep their own mask badge so the mode is obvious. */
 @Composable
 private fun BrandMark(isPrivate: Boolean) {
+    if (isPrivate) {
+        PrivateBadge()
+    } else {
+        // The logo itself, no background; the drawable keeps the artwork's aspect ratio.
+        Image(
+            painter = painterResource(R.drawable.ui_logo_mark),
+            contentDescription = null,
+            modifier = Modifier.height(72.dp),
+        )
+    }
+}
+
+@Composable
+private fun PrivateBadge() {
     val extras = SnapcastThemeExtras.colors
     val colors = MaterialTheme.colorScheme
-    val brush = remember(isPrivate, colors, extras) {
-        if (isPrivate) {
-            Brush.linearGradient(listOf(extras.privateField, colors.tertiary))
-        } else {
-            Brush.linearGradient(listOf(colors.primary, colors.tertiary))
-        }
-    }
+    val brush = remember(colors, extras) { Brush.linearGradient(listOf(extras.privateField, colors.tertiary)) }
     Box(
         modifier = Modifier
             .size(72.dp)
@@ -202,9 +212,9 @@ private fun BrandMark(isPrivate: Boolean) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = if (isPrivate) Icons.Filled.TheaterComedy else Icons.Filled.Cast,
+            imageVector = Icons.Filled.TheaterComedy,
             contentDescription = null,
-            tint = if (isPrivate) extras.onPrivateBar else colors.onPrimary,
+            tint = extras.onPrivateBar,
             modifier = Modifier.size(36.dp),
         )
     }

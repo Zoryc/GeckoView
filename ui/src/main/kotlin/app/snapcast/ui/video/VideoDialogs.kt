@@ -82,7 +82,7 @@ fun CastErrorDialog(kind: CastErrorKind, message: String, onDismiss: () -> Unit)
     )
 }
 
-/** Picks one quality (HLS variant / DASH representation) to cast. */
+/** Picks one quality (HLS variant) to cast. */
 @Composable
 fun QualityDialog(video: DetectedVideo, onPick: (VideoVariant) -> Unit, onDismiss: () -> Unit) {
     val choices = VideoLabels.qualityChoices(video)

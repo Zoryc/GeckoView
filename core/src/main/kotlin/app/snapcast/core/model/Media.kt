@@ -69,6 +69,11 @@ data class VideoVariant(
     val codecs: String? = null,
     val frameRate: Double? = null,
     val name: String? = null,
+    /**
+     * HLS: the variant's audio is a separate EXT-X-MEDIA rendition that only the master playlist references,
+     * so this variant's playlist alone plays without sound and cannot be cast on its own.
+     */
+    val separateAudio: Boolean = false,
 ) {
     /** Human label such as "1080p", "720p · 60fps" or "2.5 Mbps". */
     val qualityLabel: String
@@ -103,12 +108,21 @@ enum class SubtitleFormat(val mimeType: String) {
 data class SubtitleTrack(
     /** Stable id (hash of url) unique within a video. */
     val id: String,
-    /** Absolute http(s) URL, or a content:// / file:// URI for user-picked local files. */
+    /**
+     * Absolute http(s) URL, or a content:// / file:// URI for user-picked local files ([isLocal]). Tracks
+     * found on pages or in manifests are always http(s).
+     */
     val url: String,
     val label: String? = null,
     val language: String? = null,
     val format: SubtitleFormat = SubtitleFormat.UNKNOWN,
+    /** Picked by the user from the phone's storage; the only tracks whose non-http URI may be read. */
     val isLocal: Boolean = false,
+    /**
+     * The URL is an HLS subtitle rendition (a media playlist of WebVTT segments) that the stream's master
+     * playlist already delivers; it is not a file that can be side-loaded.
+     */
+    val isHlsRendition: Boolean = false,
 )
 
 /** Information about content protection found on a page or inside a manifest. */

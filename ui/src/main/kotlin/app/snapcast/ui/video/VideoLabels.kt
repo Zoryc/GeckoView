@@ -1,6 +1,7 @@
 package app.snapcast.ui.video
 
 import app.snapcast.core.model.DetectedVideo
+import app.snapcast.core.model.StreamType
 import app.snapcast.core.model.VideoVariant
 import app.snapcast.core.util.Formatters
 
@@ -35,11 +36,18 @@ object VideoLabels {
         if (video.isDrmProtected) add(VideoChip(VideoChipKind.DRM, null))
     }
 
-    /** Variants worth offering in "Choose quality", best first and without duplicate labels. */
-    fun qualityChoices(video: DetectedVideo): List<VideoVariant> =
-        video.variants
+    /**
+     * Variants worth offering in "Choose quality", best first and without duplicate labels. Only HLS variants
+     * can be cast on their own: every DASH representation points at the manifest itself, and an HLS variant
+     * whose audio is a separate rendition would play without sound (the master is cast instead).
+     */
+    fun qualityChoices(video: DetectedVideo): List<VideoVariant> {
+        if (video.type == StreamType.DASH) return emptyList()
+        return video.variants
+            .filter { !it.separateAudio }
             .sortedWith(compareByDescending<VideoVariant> { it.height ?: 0 }.thenByDescending { it.bandwidth ?: 0L })
             .distinctBy { it.qualityLabel to it.bandwidth }
+    }
 
     /** Secondary line of a quality choice, e.g. "2.5 Mbps · avc1.64001f"; null when nothing is known. */
     fun variantDetails(variant: VideoVariant): String? {

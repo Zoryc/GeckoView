@@ -36,8 +36,8 @@ import app.snapcast.browser.BrowserPrompt
 import app.snapcast.ui.R
 
 /**
- * Renders [prompt] (the oldest pending one) with the matching dialog or system picker. Each prompt gets
- * fresh state (keyed by id) and its callback is invoked at most once.
+ * Renders [prompt] (the oldest pending prompt of the selected tab) with the matching dialog or system
+ * picker. Each prompt gets fresh state (keyed by id) and its callback is invoked at most once.
  */
 @Composable
 internal fun PromptHost(prompt: BrowserPrompt?) {

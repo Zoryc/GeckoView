@@ -87,6 +87,29 @@ class VideoLabelsTest {
     }
 
     @Test
+    fun `DASH offers no quality choices`() {
+        val manifest = "https://cdn.example.com/bbb_30fps.mpd"
+        val v = video(url = manifest, type = StreamType.DASH).copy(
+            variants = listOf(
+                VideoVariant(url = manifest, height = 1080, bandwidth = 5_000_000),
+                VideoVariant(url = manifest, height = 360, bandwidth = 800_000),
+            ),
+        )
+        assertThat(VideoLabels.qualityChoices(v)).isEmpty()
+    }
+
+    @Test
+    fun `variants without their own audio are not offered`() {
+        val v = video(type = StreamType.HLS).copy(
+            variants = listOf(
+                VideoVariant(url = "a", height = 1080, bandwidth = 5_000_000, separateAudio = true),
+                VideoVariant(url = "b", height = 720, bandwidth = 2_500_000, separateAudio = true),
+            ),
+        )
+        assertThat(VideoLabels.qualityChoices(v)).isEmpty()
+    }
+
+    @Test
     fun `variant details combine bitrate resolution and codecs`() {
         val details = VideoLabels.variantDetails(
             VideoVariant(url = "x", bandwidth = 2_500_000, width = 1280, height = 720, codecs = "avc1.64001f"),

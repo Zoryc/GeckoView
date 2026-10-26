@@ -2,8 +2,6 @@ package app.snapcast.ui.browser
 
 import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.SnackbarDuration
@@ -18,7 +16,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -26,6 +23,7 @@ import app.snapcast.browser.BrowserEvent
 import app.snapcast.cast.CastEvent
 import app.snapcast.cast.CastResult
 import app.snapcast.ui.R
+import app.snapcast.ui.shared.CastPermissions
 import app.snapcast.ui.util.ExternalOpenResult
 import app.snapcast.ui.util.findFragmentActivity
 import app.snapcast.ui.util.openDownloadedFile
@@ -34,31 +32,29 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * Runs an action that starts casting. On Android 13+ the notification permission (needed for the
- * casting notification and lock-screen controls) is requested once per process before the first cast;
- * the action continues whatever the answer.
+ * Runs an action that starts casting. Missing permissions are requested first: local network access on
+ * Android 17+ (the receiver must reach the phone's proxy) every time it is missing, and on Android 13+ the
+ * notification permission (needed for the casting notification and lock-screen controls) once per process.
+ * The action continues whatever the answer.
  */
 @Composable
 internal fun rememberCastPermissionGate(viewModel: BrowserViewModel): (() -> Unit) -> Unit {
     val context = LocalContext.current
     var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         val action = pending
         pending = null
         action?.invoke()
     }
     return remember(viewModel, launcher, context) {
         { action: () -> Unit ->
-            val needsPrompt = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                !viewModel.notificationPermissionRequested &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-                PackageManager.PERMISSION_GRANTED
-            if (needsPrompt) {
-                viewModel.notificationPermissionRequested = true
-                pending = action
-                launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
+            val missing = CastPermissions.missing(context, askNotifications = !viewModel.notificationPermissionRequested)
+            if (missing.isEmpty()) {
                 action()
+            } else {
+                if (Manifest.permission.POST_NOTIFICATIONS in missing) viewModel.notificationPermissionRequested = true
+                pending = action
+                launcher.launch(missing.toTypedArray())
             }
         }
     }

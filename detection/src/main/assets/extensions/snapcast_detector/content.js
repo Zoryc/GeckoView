@@ -558,6 +558,11 @@
           if (message.message) link.send(message.message);
           return Promise.resolve(true);
         }
+        // A (re)started background page knows no tab: the top frame says hello again to flush its buffer.
+        if (message.kind === M.HELLO_REQUEST) {
+          if (isTop) sayHello();
+          return undefined;
+        }
         if (message.kind === M.RESCAN) rescan(true);
       } catch (ignored) {
         // Ignore malformed messages.

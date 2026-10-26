@@ -5,18 +5,21 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
-// Snapcast palette: a warm coral accent ("cast beam") on cool graphite surfaces, with a cyan secondary.
+// Snapcast palette, built from the logo's blue (seed #1A97F9; the mark runs #3EC0FF -> #1A97F9 -> #0562F2)
+// as Material 3 tonal palettes (HCT): a sky-blue primary with deep navy containers, a teal-cyan secondary
+// (the logo's arcs), the lavender tertiary, on near-black graphite neutrals. Every on-color pair meets
+// WCAG AA (at least 4.5:1); primary/onPrimary is above 7:1 in both schemes.
 
 internal val DarkColorScheme: ColorScheme = darkColorScheme(
-    primary = Color(0xFFFF8A65),
-    onPrimary = Color(0xFF3E0D00),
-    primaryContainer = Color(0xFF7C2D12),
-    onPrimaryContainer = Color(0xFFFFDBCF),
-    inversePrimary = Color(0xFFB4441F),
-    secondary = Color(0xFF7DD3E8),
-    onSecondary = Color(0xFF00363F),
-    secondaryContainer = Color(0xFF004E5B),
-    onSecondaryContainer = Color(0xFFA9EDFF),
+    primary = Color(0xFF8CCEFF),
+    onPrimary = Color(0xFF00344E),
+    primaryContainer = Color(0xFF00497E),
+    onPrimaryContainer = Color(0xFFD2E4FF),
+    inversePrimary = Color(0xFF005FAC),
+    secondary = Color(0xFF80D4D7),
+    onSecondary = Color(0xFF003738),
+    secondaryContainer = Color(0xFF004F52),
+    onSecondaryContainer = Color(0xFF9CF1F4),
     tertiary = Color(0xFFC9B8FF),
     onTertiary = Color(0xFF2F1A63),
     tertiaryContainer = Color(0xFF46327B),
@@ -27,7 +30,7 @@ internal val DarkColorScheme: ColorScheme = darkColorScheme(
     onSurface = Color(0xFFE3E2E6),
     surfaceVariant = Color(0xFF2A2D34),
     onSurfaceVariant = Color(0xFFC3C6CF),
-    surfaceTint = Color(0xFFFF8A65),
+    surfaceTint = Color(0xFF8CCEFF),
     inverseSurface = Color(0xFFE3E2E6),
     inverseOnSurface = Color(0xFF2F3035),
     error = Color(0xFFFFB4AB),
@@ -47,15 +50,15 @@ internal val DarkColorScheme: ColorScheme = darkColorScheme(
 )
 
 internal val LightColorScheme: ColorScheme = lightColorScheme(
-    primary = Color(0xFFB4441F),
+    primary = Color(0xFF005FAC),
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFFFDBCF),
-    onPrimaryContainer = Color(0xFF3A0B00),
-    inversePrimary = Color(0xFFFF8A65),
-    secondary = Color(0xFF006878),
+    primaryContainer = Color(0xFFD4E3FF),
+    onPrimaryContainer = Color(0xFF001C39),
+    inversePrimary = Color(0xFF8CCEFF),
+    secondary = Color(0xFF00696C),
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFA9EDFF),
-    onSecondaryContainer = Color(0xFF001F25),
+    secondaryContainer = Color(0xFF9CF1F4),
+    onSecondaryContainer = Color(0xFF002021),
     tertiary = Color(0xFF5E4A94),
     onTertiary = Color(0xFFFFFFFF),
     tertiaryContainer = Color(0xFFE7DEFF),
@@ -66,7 +69,7 @@ internal val LightColorScheme: ColorScheme = lightColorScheme(
     onSurface = Color(0xFF1A1C1F),
     surfaceVariant = Color(0xFFDFE2EB),
     onSurfaceVariant = Color(0xFF43474E),
-    surfaceTint = Color(0xFFB4441F),
+    surfaceTint = Color(0xFF005FAC),
     inverseSurface = Color(0xFF2F3035),
     inverseOnSurface = Color(0xFFF1F0F4),
     error = Color(0xFFBA1A1A),
@@ -87,7 +90,7 @@ internal val LightColorScheme: ColorScheme = lightColorScheme(
 
 /** Colors that are not part of the Material scheme (private browsing, status tags). */
 data class SnapcastExtraColors(
-    /** Top bar background of private tabs. */
+    /** Top bar background of private tabs (purple, so it never reads as the blue brand accent). */
     val privateBar: Color,
     val onPrivateBar: Color,
     /** Address field background inside the private top bar. */

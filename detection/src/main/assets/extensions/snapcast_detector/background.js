@@ -10,7 +10,8 @@
  * Reports are routed to the tab's top-frame content script, the only script that talks to the app
  * (runtime.connectNative), so every message reaches the app on the right GeckoSession. Reports are
  * buffered while that script is not ready and flushed when it says hello. Content scripts of child
- * frames send their DOM findings here and they are forwarded the same way.
+ * frames send their DOM findings here and they are forwarded the same way. On start the page asks
+ * every open tab's top frame to say hello again (a restarted background page knows no tab).
  */
 (function (root) {
   'use strict';
@@ -452,6 +453,32 @@
       addListener(webRequest.onErrorOccurred, onMainFrameDone, mainFrames);
       addListener(browser.runtime && browser.runtime.onMessage, onRuntimeMessage);
       addListener(browser.tabs && browser.tabs.onRemoved, onTabRemoved);
+      requestHellos();
+    }
+
+    /**
+     * A restarted background page (extension process crash, process spawning re-enabled) has no tab
+     * state while pages stay open, and their content scripts said hello long ago: ask every top frame
+     * to say hello again so its tab becomes ready. Called after the runtime listener is registered,
+     * which answers that hello. Tabs without a content script yet say hello themselves when it starts.
+     */
+    function requestHellos() {
+      try {
+        if (!browser.tabs || typeof browser.tabs.query !== 'function' || typeof browser.tabs.sendMessage !== 'function') return;
+        Promise.resolve(browser.tabs.query({})).then((list) => {
+          for (const t of Array.isArray(list) ? list : []) {
+            if (!t || typeof t.id !== 'number' || t.id < 0) continue;
+            try {
+              Promise.resolve(browser.tabs.sendMessage(t.id, { kind: C.MESSAGE.HELLO_REQUEST }, { frameId: 0 }))
+                .then(noop, noop);
+            } catch (ignored) {
+              // No content script in that tab yet.
+            }
+          }
+        }, noop);
+      } catch (ignored) {
+        // A detector failure must never disturb browsing.
+      }
     }
 
     return {

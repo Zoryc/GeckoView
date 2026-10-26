@@ -31,7 +31,10 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) handleIntent(intent)
+        // A relaunch from Recents (after Back finished the activity, a force-stop or a reboot) replays the
+        // task's original VIEW/SEND/notification intent; it is not a new request, so do not open it again.
+        val launchedFromHistory = (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+        if (savedInstanceState == null && !launchedFromHistory) handleIntent(intent)
         setContent {
             SnapcastApp(externalRequests = externalRequests.receiveAsFlow())
         }
@@ -47,10 +50,14 @@ class MainActivity : AppCompatActivity() {
         val request = ExternalRequestParser.parse(
             action = intent.action,
             dataString = intent.dataString,
-            sharedText = intent.getStringExtra(Intent.EXTRA_TEXT),
-            searchQuery = intent.getStringExtra(SearchManager.QUERY),
+            // EXTRA_TEXT is a CharSequence: rich-text senders put a Spanned there, which getStringExtra drops.
+            sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString(),
+            searchQuery = intent.getCharSequenceExtra(SearchManager.QUERY)?.toString(),
             openCastController = intent.getBooleanExtra(EXTRA_OPEN_CAST_CONTROLLER, false),
+            // The parser only keeps http(s) results of toUrl and searches for anything else, so other apps
+            // cannot open file:, data:, about:, view-source:, moz-extension: or resource: URLs.
             toUrl = { input -> UrlInputResolver.resolve(input, settingsRepository.settings.value.searchEngine) },
+            searchUrl = { query -> UrlInputResolver.searchUrl(query, settingsRepository.settings.value.searchEngine) },
         ) ?: return
         externalRequests.trySend(request)
     }

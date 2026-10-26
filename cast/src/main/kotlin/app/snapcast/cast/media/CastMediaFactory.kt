@@ -19,6 +19,8 @@ import kotlin.math.roundToLong
  * served are skipped without renumbering the others, so an id always designates the same subtitle.
  */
 internal object CastMediaFactory {
+    /** Captured headers that belong to the captured request's host only. */
+    private val HOST_CREDENTIALS = listOf("Cookie", "Authorization")
 
     /**
      * Media served through the proxy: the stream (or [variant]) is registered with the captured headers and
@@ -33,14 +35,7 @@ internal object CastMediaFactory {
         proxy: MediaProxy,
         localSubtitles: Map<String, SubtitleSource> = emptyMap(),
     ): CastMedia {
-        val stream = proxy.registerStream(
-            ProxyStreamRequest(
-                url = variant?.url ?: video.url,
-                headers = video.headers.toMap(),
-                cookiesByHost = video.cookiesByHost,
-                typeHint = video.type.takeUnless { it == StreamType.OTHER },
-            ),
-        )
+        val stream = proxy.registerStream(streamRequest(video, streamUrl(video, variant)))
         val tracks = ArrayList<CastSubtitle>()
         var activeTrackId: Long? = null
         subtitleCandidates(video, subtitle).forEachIndexed { index, track ->
@@ -68,7 +63,37 @@ internal object CastMediaFactory {
             tracks += CastSubtitle(trackId, track.url, track.language, CastMediaRules.trackName(track, trackId))
             if (subtitle != null && CastMediaRules.isSameSubtitle(track, subtitle)) activeTrackId = trackId
         }
-        return baseMedia(video, variant?.url ?: video.url, tracks, activeTrackId)
+        return baseMedia(video, streamUrl(video, variant), tracks, activeTrackId)
+    }
+
+    /**
+     * The URL the receiver plays: the chosen [variant]'s playlist, or the master when none is chosen or the
+     * variant's audio is a separate rendition (its playlist alone would play without sound).
+     */
+    fun streamUrl(video: DetectedVideo, variant: VideoVariant?): String =
+        variant?.takeUnless { it.separateAudio }?.url ?: video.url
+
+    /**
+     * The stream registration. The captured Cookie (and Authorization) belong to [DetectedVideo.url]'s host.
+     * When a variant on another host is registered instead, the cookie moves into the per-host cookies for its
+     * own host and Authorization is dropped, so the variant host gets exactly what it gets when the master is
+     * cast: its own cookies, never the master host's credentials.
+     */
+    fun streamRequest(video: DetectedVideo, streamUrl: String): ProxyStreamRequest {
+        val typeHint = video.type.takeUnless { it == StreamType.OTHER }
+        val headers = video.headers.toMap()
+        val videoHost = UrlUtils.hostOf(video.url)
+        if (videoHost == null || UrlUtils.hostOf(streamUrl) == videoHost) {
+            return ProxyStreamRequest(streamUrl, headers, video.cookiesByHost, typeHint)
+        }
+        val cookie = video.headers.cookie?.takeIf { it.isNotBlank() }
+        return ProxyStreamRequest(
+            url = streamUrl,
+            headers = headers.filterKeys { name -> HOST_CREDENTIALS.none { it.equals(name, ignoreCase = true) } },
+            // The captured cookie wins for its own host, as the proxy's header policy does on the master path.
+            cookiesByHost = if (cookie == null) video.cookiesByHost else video.cookiesByHost + (videoHost to cookie),
+            typeHint = typeHint,
+        )
     }
 
     /** The video's subtitles without URL duplicates, plus [chosen] when it is not one of them. */

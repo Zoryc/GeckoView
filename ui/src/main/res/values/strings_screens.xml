@@ -157,7 +157,6 @@
     <string name="ui_screens_addons_signed_only">Only add-ons signed by Mozilla can be installed. Find them on addons.mozilla.org, or install a signed .xpi file you downloaded.</string>
     <string name="ui_screens_addons_browse">Browse add-ons</string>
     <string name="ui_screens_addons_from_file">Install from file</string>
-    <string name="ui_screens_addons_file_unreadable">Couldn\'t read that file</string>
     <string name="ui_screens_addons_installing">Installing add-on…</string>
     <string name="ui_screens_addons_install_failed">Installation failed</string>
     <string name="ui_screens_addons_installed">Installed add-ons</string>

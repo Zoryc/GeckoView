@@ -13,6 +13,7 @@ import app.snapcast.browser.R
 import app.snapcast.browser.SecurityLevel
 import app.snapcast.browser.TabState
 import app.snapcast.browser.delegates.SessionDelegates
+import app.snapcast.browser.download.DownloadQueue
 import app.snapcast.browser.hooks.BrowserEventBus
 import app.snapcast.browser.hooks.BrowserHooks
 import app.snapcast.browser.prompts.PromptRegistry
@@ -42,6 +43,7 @@ import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
+import org.mozilla.geckoview.WebResponse
 
 /**
  * [BrowserTabs] implementation: one [GeckoSession] per tab on the shared runtime.
@@ -61,6 +63,7 @@ internal class TabManager @Inject constructor(
     private val hooks: BrowserHooks,
     private val promptRegistry: PromptRegistry,
     private val eventBus: BrowserEventBus,
+    private val downloads: DownloadQueue,
     @ApplicationScope private val appScope: CoroutineScope,
 ) : BrowserTabs, TabHost {
 
@@ -227,6 +230,18 @@ internal class TabManager @Inject constructor(
 
     override fun exitFullscreen(tabId: String) {
         entries[tabId]?.session?.exitFullScreen()
+    }
+
+    override fun attachPromptDelegate(session: GeckoSession, ownerId: String) {
+        delegates.attachPrompts(session, this, ownerId)
+    }
+
+    override fun dismissPrompts(ownerId: String) {
+        promptRegistry.dismissOwnedBy(ownerId)
+    }
+
+    override fun enqueueDownload(response: WebResponse) {
+        downloads.enqueue(response, isPrivate = false)
     }
 
     override fun restoreTabs() {

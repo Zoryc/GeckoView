@@ -1,5 +1,6 @@
 package app.snapcast.cast.net
 
+import android.net.NetworkCapabilities
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import java.net.InetAddress
@@ -24,5 +25,19 @@ class LanAddressPickerTest {
     fun `ignores loopback and IPv6 only links`() {
         assertThat(LanAddressPicker.pick(listOf(address("127.0.0.1"), address("2001:db8::5")))).isNull()
         assertThat(LanAddressPicker.pick(emptyList())).isNull()
+    }
+
+    @Test
+    fun `Wi-Fi and Ethernet networks are LAN networks`() {
+        assertThat(LanAddressPicker.isLanTransport(setOf(NetworkCapabilities.TRANSPORT_WIFI))).isTrue()
+        assertThat(LanAddressPicker.isLanTransport(setOf(NetworkCapabilities.TRANSPORT_ETHERNET))).isTrue()
+    }
+
+    @Test
+    fun `a VPN over Wi-Fi is not a LAN network`() {
+        val vpnOverWifi = setOf(NetworkCapabilities.TRANSPORT_VPN, NetworkCapabilities.TRANSPORT_WIFI)
+        assertThat(LanAddressPicker.isLanTransport(vpnOverWifi)).isFalse()
+        assertThat(LanAddressPicker.isLanTransport(setOf(NetworkCapabilities.TRANSPORT_VPN))).isFalse()
+        assertThat(LanAddressPicker.isLanTransport(emptySet())).isFalse()
     }
 }

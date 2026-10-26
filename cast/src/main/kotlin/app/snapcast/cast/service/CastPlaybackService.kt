@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
 import android.os.SystemClock
 import android.support.v4.media.MediaMetadataCompat
@@ -40,12 +41,13 @@ import kotlin.math.abs
 
 /**
  * Foreground service (type `mediaPlayback`) running while something is cast. It keeps the local proxy
- * alive (a [ProxyManager] reference), holds Wi-Fi and partial wake locks, and owns the media notification
- * and the [MediaSessionCompat] (lock-screen controls, remote volume) mirrored from [CastTarget.playback].
+ * alive (a [ProxyManager] reference), holds Wi-Fi and partial wake locks while the receiver plays
+ * ([WakeLockPolicy]), and owns the media notification and the [MediaSessionCompat] (lock-screen controls,
+ * remote volume) mirrored from [CastTarget.playback].
  *
- * Started by the cast controller after a successful load; stops itself when the session ends or nothing
- * has been loaded for [ServiceStopPolicy.GRACE_MS]. Works without the notification permission (the
- * service still runs; the notification is just not shown).
+ * Started by the cast controller right before it sends a load (while the app is still in the foreground);
+ * stops itself when the session ends or nothing has been loaded for [ServiceStopPolicy.GRACE_MS]. Works
+ * without the notification permission (the service still runs; the notification is just not shown).
  */
 @AndroidEntryPoint
 class CastPlaybackService : Service() {
@@ -103,6 +105,7 @@ class CastPlaybackService : Service() {
         holdsProxy = true
         locks.acquire()
         observe()
+        observeLockPolicy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -145,6 +148,24 @@ class CastPlaybackService : Service() {
         }
     }
 
+    /** Holds the Wi-Fi and wake locks while the receiver plays; releases them a while after it pauses or stops. */
+    private fun observeLockPolicy() {
+        scope.launch {
+            target.playback
+                .map { WakeLockPolicy.decide(it?.playerState) }
+                .distinctUntilChanged()
+                .collectLatest { decision ->
+                    when (decision) {
+                        WakeLockPolicy.Decision.HOLD -> locks.acquire()
+                        WakeLockPolicy.Decision.RELEASE_AFTER_DELAY -> {
+                            delay(WakeLockPolicy.RELEASE_DELAY_MS)
+                            locks.release()
+                        }
+                    }
+                }
+        }
+    }
+
     private fun observeStopPolicy(): Job = scope.launch {
         combine(
             target.connectionState,
@@ -170,7 +191,7 @@ class CastPlaybackService : Service() {
         if (playback != null) {
             val steps = VolumeSteps.toSteps(playback.volume)
             if (volumeProvider.currentVolume != steps) volumeProvider.currentVolume = steps
-            if (playback.playerState == RemotePlayerState.PLAYING) locks.refresh()
+            if (WakeLockPolicy.decide(playback.playerState) == WakeLockPolicy.Decision.HOLD) locks.refresh()
         }
         updateMetadata(playback)
         val content = notificationContent(playback, device)
@@ -220,18 +241,27 @@ class CastPlaybackService : Service() {
         val speed = if (state == PlaybackStateCompat.STATE_PLAYING) playback?.playbackRate?.toFloat() ?: 1f else 0f
         val positionMs = playback?.positionMs ?: PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN
         val now = SystemClock.elapsedRealtime()
+        // The custom actions below depend only on isSeekable and the skip bits, which are part of actions.
         val key = SessionStateKey(state, actions, speed)
         val expectedMs = lastSessionPositionMs + ((now - lastSessionUpdateAt) * speed).toLong()
         if (key == lastSessionState && abs(expectedMs - positionMs) < POSITION_DRIFT_MS) return
         lastSessionState = key
         lastSessionPositionMs = positionMs
         lastSessionUpdateAt = now
-        mediaSession.setPlaybackState(
-            PlaybackStateCompat.Builder()
-                .setActions(actions)
-                .setState(state, positionMs, speed, now)
-                .build(),
-        )
+        val builder = PlaybackStateCompat.Builder()
+            .setActions(actions)
+            .setState(state, positionMs, speed, now)
+        // Android 13+ builds the shade and lock-screen controls from the session, not from the notification's
+        // actions: only play/pause, previous/next and custom actions get buttons (ACTION_STOP, REWIND and
+        // FAST_FORWARD don't). Custom actions fill the previous slot, the next slot, then two extra slots, so
+        // with both previous and next present only two fit: Stop is kept. Older versions ignore them.
+        val skipBoth = PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+        if (playback?.isSeekable == true && (actions and skipBoth) != skipBoth) {
+            builder.addCustomAction(ACTION_REWIND, getString(R.string.cast_action_rewind), R.drawable.ic_cast_replay_10)
+            builder.addCustomAction(ACTION_FORWARD, getString(R.string.cast_action_forward), R.drawable.ic_cast_forward_10)
+        }
+        builder.addCustomAction(ACTION_STOP, getString(R.string.cast_action_stop), R.drawable.ic_cast_stop)
+        mediaSession.setPlaybackState(builder.build())
     }
 
     private fun updateMetadata(playback: RemotePlaybackState?) {
@@ -335,6 +365,16 @@ class CastPlaybackService : Service() {
         override fun onSkipToPrevious() = target.skipPrevious()
 
         override fun onStop() = target.stop()
+
+        /** The Android 13+ shade / lock-screen buttons ([updatePlaybackState]). */
+        override fun onCustomAction(action: String?, extras: Bundle?) {
+            when (action) {
+                ACTION_REWIND -> target.seekBy(-SKIP_MS)
+                ACTION_FORWARD -> target.seekBy(SKIP_MS)
+                // Same as the notification's Stop: ends the session (target.stop() would keep it connected).
+                ACTION_STOP -> target.disconnect(stopCasting = true)
+            }
+        }
     }
 
     /** Hardware volume keys and the system volume UI control the receiver volume in [VolumeSteps]. */

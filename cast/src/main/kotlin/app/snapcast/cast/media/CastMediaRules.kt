@@ -1,5 +1,6 @@
 package app.snapcast.cast.media
 
+import app.snapcast.cast.CastTextTrack
 import app.snapcast.cast.HlsSegmentFormat
 import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.StreamType
@@ -95,12 +96,38 @@ internal object CastMediaRules {
             video.cookiesByHost.isEmpty() &&
             video.headers.extra.keys.none { it.equals("Authorization", ignoreCase = true) }
 
-    /** Subtitles a receiver can load without the proxy: plain http(s) WebVTT. */
+    /**
+     * Subtitles a receiver can load without the proxy: plain http(s) WebVTT files. HLS subtitle renditions are
+     * playlists, not files; the receiver gets them from the master playlist itself.
+     */
     fun isDirectSubtitle(track: SubtitleTrack): Boolean =
-        !track.isLocal && UrlUtils.isHttp(track.url) && subtitleFormat(track) == SubtitleFormat.VTT
+        !track.isLocal && !track.isHlsRendition && UrlUtils.isHttp(track.url) &&
+            subtitleFormat(track) == SubtitleFormat.VTT
 
-    /** Remote subtitles the proxy can fetch and serve as WebVTT (it converts SRT and TTML). */
-    fun isProxyableSubtitle(track: SubtitleTrack): Boolean = !track.isLocal && UrlUtils.isHttp(track.url)
+    /** Remote subtitle files the proxy can fetch and serve as WebVTT (it converts SRT and TTML). */
+    fun isProxyableSubtitle(track: SubtitleTrack): Boolean =
+        !track.isLocal && !track.isHlsRendition && UrlUtils.isHttp(track.url)
+
+    /**
+     * The receiver's in-band text track matching [chosen] (an HLS subtitle rendition), ignoring the tracks
+     * the app side-loaded ([sideLoadedIds]): same language and name first, then same language (or the same
+     * primary language subtag, "en" for "en-US"), then same name. Null when nothing matches.
+     */
+    fun inBandTextTrack(chosen: SubtitleTrack, tracks: List<CastTextTrack>, sideLoadedIds: Set<Long>): Long? {
+        val candidates = tracks.filter { it.id !in sideLoadedIds }
+        val language = chosen.language?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+        val name = chosen.label?.trim()?.takeIf { it.isNotEmpty() }
+        fun sameLanguage(track: CastTextTrack): Boolean {
+            val other = track.language?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return false
+            return language != null && (other == language || other.substringBefore('-') == language.substringBefore('-'))
+        }
+        fun sameName(track: CastTextTrack): Boolean = name != null && track.name?.trim().equals(name, ignoreCase = true)
+        return (
+            candidates.firstOrNull { sameLanguage(it) && sameName(it) }
+                ?: candidates.firstOrNull { sameLanguage(it) }
+                ?: candidates.firstOrNull { sameName(it) }
+            )?.id
+    }
 
     /** Declared format, or the one implied by the URL extension when undeclared. */
     fun subtitleFormat(track: SubtitleTrack): SubtitleFormat =

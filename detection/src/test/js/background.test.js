@@ -137,6 +137,50 @@ test('start survives a browser without some APIs', () => {
   assert.ok(bg);
 });
 
+test('on start the background asks the top frame of every open tab to say hello again', async () => {
+  const { bg, browser, timers } = setup();
+  browser.tabs.query = (info) => {
+    browser.queried = info;
+    return Promise.resolve([{ id: 5 }, { id: -1 }, null, { id: TAB }]);
+  };
+  bg.start();
+  await settle();
+  assert.deepEqual(browser.queried, {});
+  assert.deepEqual(browser.sent, [
+    { tabId: 5, message: { kind: 'snapcast-hello-request' }, options: { frameId: 0 } },
+    { tabId: TAB, message: { kind: 'snapcast-hello-request' }, options: { frameId: 0 } },
+  ]);
+
+  // The hello that answers it makes the tab ready: buffered and later reports reach the app.
+  request(bg, { url: 'https://cdn.example/a.m3u8', responseHeaders: { 'Content-Type': 'application/vnd.apple.mpegurl' } });
+  timers.run();
+  const reply = await hello(bg);
+  assert.equal(reply.messages[0].items[0].url, 'https://cdn.example/a.m3u8');
+  request(bg, { url: 'https://cdn.example/b.m3u8', responseHeaders: { 'Content-Type': 'application/vnd.apple.mpegurl' } });
+  timers.run();
+  assert.deepEqual(deliveredItems(browser).map((i) => i.url), ['https://cdn.example/b.m3u8']);
+});
+
+test('hello requests survive tabs without a content script and a failing tabs.query', async () => {
+  const { bg, browser } = setup();
+  browser.tabs.query = () => Promise.resolve([{ id: 1 }, { id: 2 }]);
+  browser.respond = (tabId) => (tabId === 1 ? Promise.reject(new Error('Receiving end does not exist')) : Promise.resolve());
+  bg.start();
+  await settle();
+  assert.deepEqual(browser.sent.map((s) => s.tabId), [1, 2]);
+
+  const throwing = setup();
+  throwing.browser.tabs.query = () => {
+    throw new Error('not implemented');
+  };
+  assert.doesNotThrow(() => throwing.bg.start());
+  const rejecting = setup();
+  rejecting.browser.tabs.query = () => Promise.reject(new Error('no tabs'));
+  rejecting.bg.start();
+  await settle();
+  assert.deepEqual(rejecting.browser.sent, []);
+});
+
 test('network reports are buffered until the top frame says hello, then handed over in the reply', async () => {
   const { bg, timers, browser } = setup();
   request(bg, {

@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.WebExtension
+import org.mozilla.geckoview.WebResponse
 
 /**
  * Browser-action popups (e.g. uBlock Origin's panel). Like the GeckoView example app, a popup is a
@@ -34,6 +35,11 @@ internal class PopupController @Inject constructor(
         override fun onCrash(session: GeckoSession) = dismiss(session)
 
         override fun onKill(session: GeckoSession) = dismiss(session)
+
+        // Downloads started from the popup page (e.g. an export button) are saved like a tab's.
+        override fun onExternalResponse(session: GeckoSession, response: WebResponse) {
+            tabs.get().enqueueDownload(response)
+        }
     }
 
     private val navigationDelegate = object : GeckoSession.NavigationDelegate {
@@ -62,16 +68,20 @@ internal class PopupController @Inject constructor(
         val session = GeckoSession()
         session.setContentDelegate(contentDelegate)
         session.setNavigationDelegate(navigationDelegate)
+        // Without a prompt delegate GeckoView dismisses every dialog: <select> would not open,
+        // confirm() would return false and file/date/color inputs would do nothing.
+        tabs.get().attachPromptDelegate(session, POPUP_PROMPT_OWNER)
         session.open(runtimeProvider.runtime)
         val title = action.title?.takeIf { it.isNotBlank() } ?: extension.displayName
         _popup.value = ExtensionPopup(extensionId = extension.id, title = title, session = session)
         return GeckoResult.fromValue(session)
     }
 
-    /** Closes the popup and its session. */
+    /** Closes the popup and its session, cancelling the dialogs it left open (GeckoView does not). */
     fun dismiss() {
         val current = _popup.value ?: return
         _popup.value = null
+        tabs.get().dismissPrompts(POPUP_PROMPT_OWNER)
         if (current.session.isOpen) current.session.close()
     }
 
@@ -87,5 +97,10 @@ internal class PopupController @Inject constructor(
 
     private fun dismiss(session: GeckoSession) {
         if (_popup.value?.session === session) dismiss()
+    }
+
+    private companion object {
+        /** Owner of the popup's web dialogs; at most one popup exists. */
+        const val POPUP_PROMPT_OWNER = "extension-popup"
     }
 }

@@ -29,6 +29,7 @@
     DELIVER: 'snapcast-deliver',
     RESCAN: 'snapcast-rescan',
     RESCAN_ALL: 'snapcast-rescan-all',
+    HELLO_REQUEST: 'snapcast-hello-request',
   });
 
   const HLS_MIMES = new Set([
@@ -388,6 +389,8 @@
       const name = (eq >= 0 ? param.substring(0, eq) : param).toLowerCase();
       const value = eq >= 0 ? param.substring(eq + 1) : '';
       if (VOLATILE_PARAMS.has(name)) return false;
+      // LL-HLS delivery directives (_HLS_msn, _HLS_part, _HLS_skip, ...) never select another resource.
+      if (name.startsWith('_hls_')) return false;
       if (NUMERIC_CACHE_BUSTERS.has(name)) return !/^\d+$/.test(value);
       return true;
     });

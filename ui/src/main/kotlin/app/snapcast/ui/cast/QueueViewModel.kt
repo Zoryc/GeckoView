@@ -52,7 +52,7 @@ internal class QueueViewModel @Inject constructor(
 
     val effects: Flow<QueueEffect> = effectChannel.receiveAsFlow()
 
-    /** True while "Cast queue" is starting the first item. */
+    /** True while "Cast queue" is starting to cast the pending queue. */
     val startingCast: StateFlow<Boolean> = castingQueue.asStateFlow()
 
     val uiState: StateFlow<QueueUiState> =
@@ -96,24 +96,21 @@ internal class QueueViewModel @Inject constructor(
     fun removePending(key: String) = controller.removePending(key)
 
     /**
-     * Casts the first pending item; [CastController.cast] then sends the rest of the pending queue to the
-     * receiver. The first item is taken out of the pending queue so it is not loaded twice, and put back in
-     * front if casting fails.
+     * Casts the pending queue in order. [CastController.castPendingQueue] takes the items from the pending
+     * queue only once the receiver has loaded them; while no device is connected the request waits for one
+     * (the device chooser is opened), and a cancelled chooser, an expired request or a failed load leave the
+     * pending queue untouched.
      */
     fun castQueue() {
-        val first = (uiState.value as? QueueUiState.Pending)?.items?.firstOrNull() ?: return
+        if ((uiState.value as? QueueUiState.Pending)?.items.isNullOrEmpty()) return
         if (castingQueue.value) return
         castingQueue.value = true
         viewModelScope.launch {
             try {
-                controller.removePending(first.key)
-                when (val result = controller.cast(first.video)) {
+                when (val result = controller.castPendingQueue()) {
                     CastResult.Success -> Unit
                     CastResult.NeedsDevice -> effectChannel.trySend(QueueEffect.ChooseDevice)
-                    is CastResult.Error -> {
-                        controller.addToQueue(first.video, playNext = true)
-                        effectChannel.trySend(QueueEffect.Message(UiMessage.Text(result.message)))
-                    }
+                    is CastResult.Error -> effectChannel.trySend(QueueEffect.Message(UiMessage.Text(result.message)))
                 }
             } catch (e: CancellationException) {
                 throw e

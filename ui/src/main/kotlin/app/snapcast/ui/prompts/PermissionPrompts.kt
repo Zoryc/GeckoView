@@ -76,7 +76,9 @@ private fun displayOrigin(origin: String): String = UrlUtils.hostOf(origin) ?: o
 internal fun ContentPermissionPrompt(prompt: BrowserPrompt.ContentPermission) {
     val once = rememberOnce(prompt.id)
     AlertDialog(
-        onDismissRequest = { once { prompt.onResult(false) } },
+        // Back or a tap outside is not a choice: deny this time only, so the site may ask again. Only Block
+        // is remembered for the site.
+        onDismissRequest = { once { prompt.dismiss() } },
         icon = { Icon(prompt.kind.icon(), contentDescription = null) },
         title = { Text(stringResource(R.string.ui_prompt_perm_title)) },
         text = { Text(stringResource(prompt.kind.messageRes(), displayOrigin(prompt.origin))) },

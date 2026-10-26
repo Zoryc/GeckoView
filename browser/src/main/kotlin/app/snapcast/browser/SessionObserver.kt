@@ -38,6 +38,18 @@ interface SessionObserver {
 interface LoadInterceptor {
     /** Return true to block the load because it was handled. Called for top-level and subframe loads. */
     fun interceptLoad(tabId: String, url: String, isTopLevel: Boolean): Boolean
+
+    /**
+     * What the browser calls for every top-level and subframe load; the default forwards to the
+     * three-argument variant. Override it when a load must only have an effect if the user asked for it.
+     *
+     * @param userInitiated the user asked for this load: `LoadRequest.hasUserGesture || isDirectNavigation`
+     *   (a tap on a link, a typed URL, an app load). A top-level redirect hop inherits the value of the load
+     *   it redirects. False for loads a page starts by itself (`location = ...` on load, timers, frames
+     *   loading without a tap); subframe loads only report their own gesture.
+     */
+    fun interceptLoad(tabId: String, url: String, isTopLevel: Boolean, userInitiated: Boolean): Boolean =
+        interceptLoad(tabId, url, isTopLevel)
 }
 
 /** Lets other modules handle responses Gecko cannot display before they are treated as downloads. */

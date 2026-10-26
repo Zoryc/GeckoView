@@ -19,6 +19,16 @@ class InstallSourcesTest {
     }
 
     @Test
+    fun `web pages may only start https installs`() {
+        assertThat(InstallSources.isAllowedFromWeb("https://addons.mozilla.org/a.xpi")).isTrue()
+        assertThat(InstallSources.isAllowedFromWeb("  HTTPS://example.com/a.xpi")).isTrue()
+        assertThat(InstallSources.isAllowedFromWeb("http://example.com/a.xpi")).isFalse()
+        assertThat(InstallSources.isAllowedFromWeb("file:///sdcard/a.xpi")).isFalse()
+        assertThat(InstallSources.isAllowedFromWeb("content://downloads/42")).isFalse()
+        assertThat(InstallSources.isAllowedFromWeb("https:example.com/a.xpi")).isFalse()
+    }
+
+    @Test
     fun `everything else is unsupported`() {
         assertThat(InstallSources.kindOf("javascript:void(0)")).isEqualTo(InstallSourceKind.UNSUPPORTED)
         assertThat(InstallSources.kindOf("data:application/x-xpinstall;base64,AA==")).isEqualTo(InstallSourceKind.UNSUPPORTED)

@@ -42,6 +42,14 @@ internal class SessionDelegates @Inject constructor(
         session.historyDelegate = TabHistoryDelegate(host, history, appScope)
     }
 
+    /**
+     * Dialogs and pickers only, for a session that is not a tab (an extension popup); its prompts are
+     * registered under [ownerId] (see [PromptRegistry.dismissOwnedBy]).
+     */
+    fun attachPrompts(session: GeckoSession, host: TabHost, ownerId: String) {
+        session.promptDelegate = TabPromptDelegate(context, host, prompts, uploads, appScope, ownerId)
+    }
+
     /** Removes the delegates so a closed or replaced session cannot call back into its tab. */
     fun detach(session: GeckoSession) {
         session.navigationDelegate = null

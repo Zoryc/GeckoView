@@ -69,6 +69,16 @@ internal class DetectorExtensionManager @Inject constructor(
     }
 
     private fun onInstalled(controller: WebExtensionController, installed: WebExtension) {
+        if (!installed.isBuiltIn) {
+            // A user-installed add-on squatting on the detector's id (left over from before
+            // built-ins were matched by flag): remove it so the bundled detector can install.
+            Log.w(TAG, "Replacing a non-built-in add-on that uses the detector id")
+            controller.uninstall(installed).accept(
+                { install() },
+                { error -> onInstallFailed(error) },
+            )
+            return
+        }
         extension = installed
         installed.setMessageDelegate(UnboundMessageDelegate, NATIVE_APP_NAME)
         if (!installed.metaData.allowedInPrivateBrowsing) {
@@ -85,6 +95,9 @@ internal class DetectorExtensionManager @Inject constructor(
             for (tab in tabs.tabs.value) {
                 if (tab.id in sessions) continue
                 val session = tabs.session(tab.id) ?: continue
+                // The repository only accepts events of tabs it knows (late events of closed tabs are
+                // dropped); a session wired by this fallback must have its entry. Idempotent.
+                repository.onTabOpened(tab.id, tab.isPrivate)
                 sessions[tab.id] = session to tab.isPrivate
             }
         } catch (e: RuntimeException) {

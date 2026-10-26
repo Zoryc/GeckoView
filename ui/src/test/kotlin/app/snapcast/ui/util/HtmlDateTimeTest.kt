@@ -94,6 +94,19 @@ class HtmlDateTimeTest {
     }
 
     @Test
+    fun `week years outside the HTML range are ignored instead of throwing`() {
+        // Gecko passes min/max through raw, so a page controls these strings.
+        assertThat(HtmlDateTime.parse(DateTimeType.WEEK, "1000000000-W01").date).isNull()
+        assertThat(HtmlDateTime.parse(DateTimeType.WEEK, "999999999-W52").date).isNull()
+        assertThat(HtmlDateTime.parse(DateTimeType.WEEK, "2147483647-W01").date).isNull()
+        assertThat(HtmlDateTime.parse(DateTimeType.WEEK, "0000-W01").date).isNull()
+        assertThat(HtmlDateTime.isDateAllowed(DateTimeType.WEEK, LocalDate.of(2024, 1, 1), null, "1000000000-W01")).isTrue()
+        assertThat(HtmlDateTime.isDateAllowed(DateTimeType.WEEK, LocalDate.of(2024, 1, 1), "999999999-W52", null)).isTrue()
+        // The largest HTML year still parses.
+        assertThat(HtmlDateTime.parse(DateTimeType.WEEK, "275760-W01").date).isNotNull()
+    }
+
+    @Test
     fun `utc millis round trip`() {
         val date = LocalDate.of(2023, 11, 5)
         assertThat(HtmlDateTime.fromUtcMillis(HtmlDateTime.toUtcMillis(date))).isEqualTo(date)

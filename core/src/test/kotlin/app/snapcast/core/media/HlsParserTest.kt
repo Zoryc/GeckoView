@@ -109,6 +109,44 @@ class HlsParserTest {
         assertThat(tracks[0].label).isEqualTo("Deutsch")
         assertThat(tracks[0].language).isEqualTo("de")
         assertThat(tracks.map { it.format }).containsExactly(SubtitleFormat.VTT, SubtitleFormat.VTT)
+        assertThat(tracks.map { it.isHlsRendition }).containsExactly(true, true)
+        assertThat(tracks.map { it.isLocal }).containsExactly(false, false)
+    }
+
+    @Test
+    fun `subtitle renditions with non-network URIs are dropped`() {
+        val text = """
+            #EXTM3U
+            #EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="s",NAME="a",URI="file:///data/data/app.snapcast/shared_prefs/x.xml"
+            #EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="s",NAME="b",URI="content://app.snapcast.browser.fileprovider/d/x"
+            #EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="s",NAME="c",URI="subs/en.m3u8"
+            #EXT-X-STREAM-INF:BANDWIDTH=1000000,SUBTITLES="s"
+            v.m3u8
+        """.trimIndent()
+        val playlist = assertIs<HlsPlaylist.Master>(HlsParser.parse(text, "https://e.com/hls/master.m3u8"))
+        assertThat(HlsParser.subtitleTracks(playlist).map { it.url }).containsExactly("https://e.com/hls/subs/en.m3u8")
+    }
+
+    @Test
+    fun `variants whose audio group has its own playlists are marked separate audio`() {
+        val text = """
+            #EXTM3U
+            #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud1",NAME="English",LANGUAGE="en",DEFAULT=YES,URI="a1/prog_index.m3u8"
+            #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="muxed",NAME="English",LANGUAGE="en",DEFAULT=YES
+            #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,AUDIO="aud1"
+            v1080/prog_index.m3u8
+            #EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720,AUDIO="muxed"
+            v720/prog_index.m3u8
+            #EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360
+            v360/prog_index.m3u8
+            #EXT-X-STREAM-INF:BANDWIDTH=600000,RESOLUTION=480x270,AUDIO="unknown"
+            v270/prog_index.m3u8
+        """.trimIndent()
+        val playlist = assertIs<HlsPlaylist.Master>(HlsParser.parse(text, "https://e.com/m.m3u8"))
+        val variants = HlsParser.videoVariants(playlist)
+        assertThat(variants.map { it.height to it.separateAudio })
+            .containsExactly(1080 to true, 720 to false, 360 to false, 270 to false)
+            .inOrder()
     }
 
     @Test

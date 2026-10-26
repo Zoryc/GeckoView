@@ -1,9 +1,12 @@
 package app.snapcast.addons.prompts
 
 import android.content.Context
+import android.util.Log
 import app.snapcast.addons.AddonPermissionPrompt
 import app.snapcast.addons.displayName
+import app.snapcast.addons.impersonatesBuiltIn
 import app.snapcast.addons.isHiddenBuiltIn
+import app.snapcast.addons.util.LOG_TAG
 import app.snapcast.addons.util.loadBitmap
 import app.snapcast.addons.util.runOnMain
 import app.snapcast.data.di.ApplicationScope
@@ -50,6 +53,11 @@ internal class InstallPrompts @Inject constructor(
         origins: Array<String>,
         dataCollectionPermissions: Array<String>,
     ): GeckoResult<WebExtension.PermissionPromptResponse>? {
+        // Gecko rejects the install (ERROR_USER_CANCELED), which leaves the install state Idle.
+        if (extension.impersonatesBuiltIn) {
+            Log.w(LOG_TAG, "Refusing an add-on that claims the built-in id ${extension.id}")
+            return GeckoResult.fromValue(WebExtension.PermissionPromptResponse(false, false, false))
+        }
         if (extension.isHiddenBuiltIn) {
             return GeckoResult.fromValue(WebExtension.PermissionPromptResponse(true, true, false))
         }
@@ -90,6 +98,7 @@ internal class InstallPrompts @Inject constructor(
         origins: Array<String>,
         dataCollection: Array<String>,
     ): GeckoResult<AllowOrDeny> {
+        if (extension.impersonatesBuiltIn) return GeckoResult.deny()
         if (extension.isHiddenBuiltIn) return GeckoResult.allow()
         val result = GeckoResult<AllowOrDeny>()
         enqueue(

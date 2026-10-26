@@ -102,6 +102,10 @@ internal class AddonsManager @Inject constructor(
 
     /** Installs started by a web page (addons.mozilla.org through mozAddonManager). */
     private val pageInstalls = HashSet<String>()
+
+    /** A package opened from web content ([installFromWeb]) is downloading or waiting on its prompt. */
+    private var webInstallActive = false
+
     private var listingGeneration = 0
     private var appliedGeneration = 0
 
@@ -206,6 +210,33 @@ internal class AddonsManager @Inject constructor(
         val source = url.trim()
         if (source.isEmpty()) return
         scope.launch(Dispatchers.Main.immediate) { performInstall(source) }
+    }
+
+    /**
+     * Installs a package the user opened from web content (a tapped link to an .xpi, see the Xpi
+     * interceptors). Unlike [install] (file picker, typed URLs in the add-ons screen) it accepts https
+     * sources only and runs one at a time: page-started installs are ignored while one is downloading or
+     * waiting on its prompt, so a page cannot queue prompt after prompt.
+     */
+    fun installFromWeb(url: String) {
+        val source = url.trim()
+        if (source.isEmpty()) return
+        scope.launch(Dispatchers.Main.immediate) {
+            if (webInstallActive) {
+                Log.i(LOG_TAG, "Ignoring web install of $source: another one is pending")
+                return@launch
+            }
+            if (!InstallSources.isAllowedFromWeb(source)) {
+                _installState.value = AddonInstallState.Failed(messages.installError(InstallError.UNSUPPORTED_SOURCE))
+                return@launch
+            }
+            webInstallActive = true
+            try {
+                performInstall(source)
+            } finally {
+                webInstallActive = false
+            }
+        }
     }
 
     override fun installUBlockOrigin() {

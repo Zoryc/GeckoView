@@ -23,14 +23,26 @@ android {
         versionName = "0.1"
     }
 
+    // Release signing comes from the SNAPCAST_KEYSTORE_* environment variables (set in CI from repository
+    // secrets). Without them the release build falls back to the debug key so it stays installable.
+    val releaseKeystore = providers.environmentVariable("SNAPCAST_KEYSTORE_FILE").orNull
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = providers.environmentVariable("SNAPCAST_KEYSTORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("SNAPCAST_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("SNAPCAST_KEY_PASSWORD").orNull
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key so CI can produce an installable release APK.
-            // Replace with a real signing config before publishing.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (releaseKeystore != null) "release" else "debug")
         }
     }
 

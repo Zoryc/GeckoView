@@ -54,6 +54,27 @@ class XpiUrlsTest {
     }
 
     @Test
+    fun `same resource ignores fragment, scheme and host case and http versus https`() {
+        assertThat(XpiUrls.sameResource("https://example.com/get?id=7", "https://example.com/get?id=7")).isTrue()
+        assertThat(XpiUrls.sameResource("https://example.com/a.xpi#top", "https://example.com/a.xpi")).isTrue()
+        assertThat(XpiUrls.sameResource("HTTPS://Example.COM/a.xpi", "https://example.com/a.xpi")).isTrue()
+        assertThat(XpiUrls.sameResource("http://example.com/get", "https://example.com/get")).isTrue()
+        assertThat(XpiUrls.sameResource("https://example.com", "https://example.com/")).isTrue()
+        assertThat(XpiUrls.sameResource("https://example.com?x=1", "https://example.com/?x=1")).isTrue()
+    }
+
+    @Test
+    fun `different resources do not match`() {
+        assertThat(XpiUrls.sameResource("https://example.com/get?id=7", "https://example.com/get?id=8")).isFalse()
+        assertThat(XpiUrls.sameResource("https://example.com/A.xpi", "https://example.com/a.xpi")).isFalse()
+        assertThat(XpiUrls.sameResource("https://example.com/a.xpi", "https://evil.example/a.xpi")).isFalse()
+        assertThat(XpiUrls.sameResource("https://example.com:8443/a", "https://example.com/a")).isFalse()
+        assertThat(XpiUrls.sameResource("file:///a.xpi", "file:///a.xpi")).isFalse()
+        assertThat(XpiUrls.sameResource("", "")).isFalse()
+        assertThat(XpiUrls.sameResource("https:///a", "https:///a")).isFalse()
+    }
+
+    @Test
     fun `responses match by content type or by url`() {
         val xpiHeaders = mapOf("content-type" to "application/x-xpinstall")
         assertThat(XpiUrls.isXpiResponse("https://example.com/download?id=7", xpiHeaders)).isTrue()

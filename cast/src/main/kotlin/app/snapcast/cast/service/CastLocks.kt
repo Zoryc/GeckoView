@@ -7,8 +7,8 @@ import android.os.PowerManager
 import android.os.SystemClock
 
 /**
- * Wi-Fi and CPU locks held while casting, so the proxy keeps serving the receiver with the screen off.
- * Not reference counted; safe to acquire and release repeatedly.
+ * Wi-Fi and CPU locks held while the receiver plays, so the proxy keeps serving it with the screen off
+ * ([WakeLockPolicy] decides when). Not reference counted; safe to acquire and release repeatedly.
  */
 internal class CastLocks(context: Context) {
     private val wifiLock: WifiManager.WifiLock? = runCatching {
@@ -57,7 +57,13 @@ internal class CastLocks(context: Context) {
         const val LOCK_TAG = "Snapcast:Casting"
         const val WAKE_LOCK_TIMEOUT_MS = 3 * 60 * 60 * 1000L
 
-        fun wifiLockMode(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        /**
+         * HIGH_PERF keeps Wi-Fi out of power save with the screen off and the app in the background (casting's
+         * case) up to Android 13; from Android 14 it does nothing. LOW_LATENCY only applies while the screen is
+         * on and the app is in the foreground, so it is used where nothing else works (and costs nothing with
+         * the screen off).
+         */
+        fun wifiLockMode(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             WifiManager.WIFI_MODE_FULL_LOW_LATENCY
         } else {
             @Suppress("DEPRECATION")

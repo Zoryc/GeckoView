@@ -17,7 +17,10 @@ internal class OverlaysViewModel @Inject constructor(
     browserTabs: BrowserTabs,
     private val addonsRepository: AddonsRepository,
 ) : ViewModel() {
+    /** Pending web prompts of all tabs, oldest first; only the selected tab's are shown. */
     val prompts: StateFlow<List<BrowserPrompt>> = browserTabs.prompts
+
+    val selectedTabId: StateFlow<String?> = browserTabs.selectedTabId
 
     val addonPermissionPrompt: StateFlow<AddonPermissionPrompt?> = addonsRepository.permissionPrompt
 

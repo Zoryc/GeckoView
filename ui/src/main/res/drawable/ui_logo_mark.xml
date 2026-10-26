@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Snapcast logo mark for in-app use: the S + broadcast arcs of app/src/main/res/drawable/ic_launcher_foreground.xml (docs/logo/snapcast-mark.svg), translated so the viewport is cropped tightly to the artwork (0.4 unit margin, original aspect ratio). Keep the two files in sync. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="59.3dp"
+    android:height="72dp"
+    android:viewportWidth="43.13"
+    android:viewportHeight="52.378">
+    <!-- Left stroke and top facet -->
+    <path android:pathData="M6.401,6.66 L16.938,0.576 A1.297,1.297 0 0,1 18.235,0.576 L30.399,7.599 L18.565,14.431 L18.078,14.15 L18.078,20.719 L18.565,21 L18.565,34.137 L6.401,27.114 A1.297,1.297 0 0,1 5.752,25.99 L5.752,7.783 A1.297,1.297 0 0,1 6.401,6.66 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="11.915"
+                android:startY="0.202"
+                android:endX="11.915"
+                android:endY="30.298"
+                android:startColor="#FF3EC0FF"
+                android:endColor="#FF17A6FB" />
+        </aapt:attr>
+    </path>
+    <!-- Top bar beyond the fold -->
+    <path android:pathData="M29.912,7.318 L42.081,14.344 A1.297,1.297 0 0,1 42.73,15.467 L42.73,26.136 A1.297,1.297 0 0,1 40.784,27.26 L18.078,14.15 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="26.215"
+                android:startY="10.734"
+                android:endX="42.73"
+                android:endY="21.551"
+                android:startColor="#FF2898FB"
+                android:endColor="#FF0562F2" />
+        </aapt:attr>
+    </path>
+    <!-- Middle diagonal -->
+    <path android:pathData="M18.078,20.719 L39.076,32.842 L39.563,33.123 L28.186,39.691 L18.078,33.856 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="18.078"
+                android:startY="20.719"
+                android:endX="39.076"
+                android:endY="43.522"
+                android:startColor="#FF035DEE"
+                android:endColor="#FF1282FA" />
+        </aapt:attr>
+    </path>
+    <!-- Bottom bar -->
+    <path android:pathData="M39.076,32.842 L42.081,34.577 A1.297,1.297 0 0,1 42.73,35.701 L42.73,42.763 A1.297,1.297 0 0,1 42.081,43.887 L28.367,51.805 A1.297,1.297 0 0,1 27.719,51.978 L23.268,51.978 A22.868,22.868 0 0,0 21.442,43.023 L27.699,39.41 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="42.73"
+                android:startY="34.952"
+                android:endX="25.484"
+                android:endY="51.978"
+                android:startColor="#FF1A97F9"
+                android:endColor="#FF2BB8FE" />
+        </aapt:attr>
+    </path>
+    <!-- Broadcast arcs (dot + two quarter rings) -->
+    <path android:pathData="M0.4,51.978 L4.941,51.978 A4.541,4.541 0 0,0 0.4,47.437 Z M12.564,51.978 A12.164,12.164 0 0,0 0.4,39.815 L0.4,44.356 A7.623,7.623 0 0,1 8.023,51.978 Z M20.186,51.978 A19.786,19.786 0 0,0 0.4,32.192 L0.4,36.733 A15.245,15.245 0 0,1 15.645,51.978 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0.4"
+                android:startY="31.543"
+                android:endX="20.835"
+                android:endY="51.978">
+                <item android:offset="0" android:color="#FF2CC3FB" />
+                <item android:offset="0.4" android:color="#FF0B8EF7" />
+                <item android:offset="1" android:color="#FF056BEF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

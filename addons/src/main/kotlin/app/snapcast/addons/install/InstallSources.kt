@@ -27,4 +27,11 @@ internal object InstallSources {
             else -> InstallSourceKind.UNSUPPORTED
         }
     }
+
+    /**
+     * Sources a web page may make the app install from (a tapped link to a package): https only, since
+     * over http anyone on the network could swap the package for another signed add-on.
+     */
+    fun isAllowedFromWeb(url: String): Boolean =
+        kindOf(url) == InstallSourceKind.REMOTE && url.trim().startsWith("https://", ignoreCase = true)
 }

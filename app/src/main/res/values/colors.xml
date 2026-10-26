@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="snapcast_background">#FF0E1014</color>
-    <color name="snapcast_primary">#FFFF8A65</color>
-    <color name="snapcast_on_primary">#FF3E0D00</color>
+    <!-- Logo blue; same values as the Compose dark scheme's primary / onPrimary (ui/theme/Color.kt). -->
+    <color name="snapcast_primary">#FF8CCEFF</color>
+    <color name="snapcast_on_primary">#FF00344E</color>
     <!-- Mid-point of the launcher background gradient (#0D1520 -> #070C15). -->
     <color name="snapcast_launcher_background">#FF0A101A</color>
 </resources>

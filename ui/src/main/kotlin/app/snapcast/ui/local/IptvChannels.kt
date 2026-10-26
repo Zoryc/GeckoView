@@ -56,7 +56,10 @@ internal object IptvChannels {
         channel.name.lowercase(Locale.ROOT).contains(needle) ||
             channel.group?.lowercase(Locale.ROOT)?.contains(needle) == true
 
-    /** Stream type of a channel URL; extension-less URLs (typical for IPTV) are assumed to be HLS. */
+    /**
+     * Stream type guessed from a channel URL alone; extension-less URLs (typical for IPTV) are assumed to be
+     * HLS. Used for labels, and when [ChannelProbe] cannot tell the real type.
+     */
     fun streamType(url: String): StreamType =
         MediaClassifier.typeFromUrl(url) ?: if (UrlUtils.extensionOf(url) == null) StreamType.HLS else StreamType.OTHER
 
@@ -69,20 +72,29 @@ internal object IptvChannels {
         return MediaHeaders(referer = referer, userAgent = userAgent, origin = origin)
     }
 
-    /** A castable [DetectedVideo] for [channel]. */
-    fun toDetectedVideo(channel: M3uEntry, playlistName: String?, nowMs: Long): DetectedVideo {
-        val type = streamType(channel.url)
+    /**
+     * A castable [DetectedVideo] for [channel]. [resolved] is what [ChannelProbe] found the URL serves;
+     * without it the type is guessed from the URL.
+     */
+    fun toDetectedVideo(
+        channel: M3uEntry,
+        playlistName: String?,
+        nowMs: Long,
+        resolved: ChannelKind? = null,
+    ): DetectedVideo {
+        val type = resolved?.type ?: streamType(channel.url)
         return DetectedVideo(
             id = UrlUtils.stableId(channel.url),
             tabId = TAB_ID,
             url = channel.url,
             type = type,
+            mimeType = resolved?.mimeType,
             pageTitle = playlistName,
             title = channel.name,
             headers = headers(channel),
             durationSec = channel.durationSec,
             posterUrl = channel.logoUrl?.takeIf { UrlUtils.isHttp(it) },
-            isLive = type == StreamType.HLS,
+            isLive = resolved?.live ?: (type == StreamType.HLS),
             detectedAt = nowMs,
         )
     }

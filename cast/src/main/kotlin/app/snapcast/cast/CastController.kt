@@ -69,7 +69,8 @@ interface CastController {
     /**
      * Casts [video]. Uses the proxy (with the captured headers and playlist rewriting) unless [direct] is
      * true or the proxy is disabled in settings. [variant] picks one HLS variant playlist instead of the
-     * master. [startPositionMs] null resumes from the saved position when enabled in settings.
+     * master (ignored when its audio is a separate rendition, which only the master carries).
+     * [startPositionMs] null resumes from the saved position when enabled in settings.
      */
     suspend fun cast(
         video: DetectedVideo,
@@ -81,6 +82,13 @@ interface CastController {
 
     /** Appends to the receiver queue when casting, otherwise to [pendingQueue]. [playNext] inserts after the current item. */
     suspend fun addToQueue(video: DetectedVideo, playNext: Boolean = false): CastResult
+
+    /**
+     * Casts [pendingQueue] in order. Items leave the pending queue only once the receiver has loaded them;
+     * while no device is connected the request waits for one ([CastResult.NeedsDevice]), and an expired
+     * request or a failed load leave the pending queue untouched.
+     */
+    suspend fun castPendingQueue(): CastResult
 
     fun removePending(key: String)
 

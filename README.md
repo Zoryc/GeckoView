@@ -116,3 +116,20 @@ phone's proxy.
 * Sites that split audio and video into separate adaptive streams for MSE players (for example
   YouTube) cannot be cast with the Default Media Receiver.
 * The Default Media Receiver only renders WebVTT text tracks; SRT files are converted on the phone.
+
+## Release signing
+
+Tagging `vX.Y` publishes a GitHub release (`.github/workflows/release.yml`). To sign releases with your
+own key, so later versions install over earlier ones, add these repository secrets:
+
+| Secret | Value |
+|---|---|
+| `SNAPCAST_KEYSTORE_BASE64` | `base64 -w0 release.jks` |
+| `SNAPCAST_KEYSTORE_PASSWORD` | keystore password |
+| `SNAPCAST_KEY_ALIAS` | key alias |
+| `SNAPCAST_KEY_PASSWORD` | key password |
+
+Create the keystore once with
+`keytool -genkeypair -v -keystore release.jks -alias snapcast -keyalg RSA -keysize 4096 -validity 10000`
+and keep it safe: a lost key means users must uninstall to update. Without these secrets, releases are
+signed with a temporary debug key.

@@ -313,9 +313,11 @@ internal class BrowserViewModel @Inject constructor(
                 type = video.type,
                 mimeType = video.mimeType,
                 headers = video.headers.toMap(),
+                cookiesByHost = video.cookiesByHost,
                 subtitles = video.subtitles,
                 posterUrl = video.posterUrl,
                 pageUrl = video.pageUrl,
+                isPrivate = video.isPrivate,
             ),
         )
     }

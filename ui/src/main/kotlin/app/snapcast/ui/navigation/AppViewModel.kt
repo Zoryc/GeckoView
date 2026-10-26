@@ -3,6 +3,7 @@ package app.snapcast.ui.navigation
 import androidx.lifecycle.ViewModel
 import app.snapcast.browser.BrowserTabs
 import app.snapcast.core.model.AppSettings
+import app.snapcast.core.util.UrlUtils
 import app.snapcast.data.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +26,8 @@ internal class AppViewModel @Inject constructor(
 
     /** ExternalRequest.OpenUrl: a new (optionally private) tab showing [url]. */
     fun openInNewTab(url: String, private: Boolean) {
+        // Links from other apps may only open web pages, never file:, data: or internal URLs.
+        if (!UrlUtils.isHttp(url)) return
         browserTabs.newTab(url = url, private = private, select = true)
     }
 

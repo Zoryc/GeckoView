@@ -33,6 +33,10 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.TextPrompt
  * Publishes web-content dialogs as [BrowserPrompt]s and answers Gecko when the UI resolves them.
  * Each prompt leaves [PromptRegistry] when answered or when Gecko dismisses it (e.g. the page
  * navigated away); late answers are ignored.
+ *
+ * @param ownerId set for a session that is not a tab (an extension popup): its prompts have no
+ *   [BrowserPrompt.tabId], so the UI shows them whatever tab is selected, and are registered under this
+ *   id so [PromptRegistry.dismissOwnedBy] can cancel them when the session goes away
  */
 internal class TabPromptDelegate(
     private val context: Context,
@@ -40,6 +44,7 @@ internal class TabPromptDelegate(
     private val registry: PromptRegistry,
     private val uploads: UploadFileCopier,
     private val appScope: CoroutineScope,
+    private val ownerId: String? = null,
 ) : GeckoSession.PromptDelegate {
 
     override fun onAlertPrompt(session: GeckoSession, prompt: AlertPrompt): GeckoResult<PromptResponse> {
@@ -285,7 +290,7 @@ internal class TabPromptDelegate(
                     }
                 },
             )
-            registry.add(browserPrompt)
+            registry.add(browserPrompt, owner = ownerId)
             return result
         }
 

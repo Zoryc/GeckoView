@@ -1,5 +1,6 @@
 package app.snapcast.cast.media
 
+import app.snapcast.cast.CastTextTrack
 import app.snapcast.cast.HlsSegmentFormat
 import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.MediaHeaders
@@ -145,4 +146,27 @@ class CastMediaRulesTest {
 
     private fun track(url: String, format: SubtitleFormat = SubtitleFormat.UNKNOWN) =
         SubtitleTrack(id = url, url = url, format = format)
+
+    @Test
+    fun `an HLS subtitle rendition maps to the receiver's in-band track`() {
+        val chosen = SubtitleTrack(
+            id = "r",
+            url = "https://e.com/subs/en.m3u8",
+            label = "English (CC)",
+            language = "en",
+            isHlsRendition = true,
+        )
+        val sideLoaded = CastTextTrack(id = 1, name = "English", language = "en")
+        val french = CastTextTrack(id = 7, name = "Français", language = "fr")
+        val english = CastTextTrack(id = 8, name = "English", language = "en-US")
+        val englishCc = CastTextTrack(id = 9, name = "English (CC)", language = "en")
+
+        assertThat(CastMediaRules.inBandTextTrack(chosen, listOf(sideLoaded, french, english, englishCc), setOf(1L)))
+            .isEqualTo(9L)
+        assertThat(CastMediaRules.inBandTextTrack(chosen, listOf(sideLoaded, french, english), setOf(1L)))
+            .isEqualTo(8L)
+        assertThat(CastMediaRules.inBandTextTrack(chosen, listOf(sideLoaded, french), setOf(1L))).isNull()
+        val unnamed = chosen.copy(language = null)
+        assertThat(CastMediaRules.inBandTextTrack(unnamed, listOf(french, englishCc), emptySet())).isEqualTo(9L)
+    }
 }

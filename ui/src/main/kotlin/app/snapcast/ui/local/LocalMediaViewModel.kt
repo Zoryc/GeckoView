@@ -33,6 +33,8 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 internal data class ChannelListState(
     val playlist: IptvPlaylist? = null,
@@ -66,12 +68,16 @@ internal class LocalMediaViewModel @Inject constructor(
     private val documents: LocalDocuments,
     private val loader: PlaylistLoader,
     private val store: IptvPlaylistStore,
+    private val probe: ChannelProbe,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
     private val collapsed = MutableStateFlow<Set<String>>(emptySet())
     private val loading = MutableStateFlow(false)
     private val effectChannel = Channel<LocalEffect>(Channel.BUFFERED)
+
+    /** Channel actions run one at a time in tap order (each may wait for a probe), so queued channels keep it. */
+    private val channelActions = Mutex()
 
     val effects: Flow<LocalEffect> = effectChannel.receiveAsFlow()
 
@@ -134,30 +140,27 @@ internal class LocalMediaViewModel @Inject constructor(
         collapsed.value = collapsed.value.let { if (key in it) it - key else it + key }
     }
 
-    fun castChannel(channel: M3uEntry) {
-        viewModelScope.launch {
-            val video = IptvChannels.toDetectedVideo(channel, store.playlist.value?.name, System.currentTimeMillis())
-            handleCastResult(guarded { controller.cast(video) }, channel.name)
+    fun castChannel(channel: M3uEntry) = channelAction {
+        val video = channelVideo(channel)
+        handleCastResult(guarded { controller.cast(video) }, channel.name)
+    }
+
+    fun queueChannel(channel: M3uEntry) = channelAction {
+        val video = channelVideo(channel)
+        when (val result = guarded { controller.addToQueue(video) }) {
+            CastResult.Success -> message(UiMessage.res(R.string.ui_screens_local_queued, channel.name))
+            CastResult.NeedsDevice -> effectChannel.trySend(LocalEffect.ChooseDevice)
+            is CastResult.Error -> message(errorMessage(result))
         }
     }
 
-    fun queueChannel(channel: M3uEntry) {
-        viewModelScope.launch {
-            val video = IptvChannels.toDetectedVideo(channel, store.playlist.value?.name, System.currentTimeMillis())
-            when (val result = guarded { controller.addToQueue(video) }) {
-                CastResult.Success -> message(UiMessage.res(R.string.ui_screens_local_queued, channel.name))
-                CastResult.NeedsDevice -> effectChannel.trySend(LocalEffect.ChooseDevice)
-                is CastResult.Error -> message(errorMessage(result))
-            }
-        }
-    }
-
-    fun playChannel(channel: M3uEntry) {
-        val video = IptvChannels.toDetectedVideo(channel, store.playlist.value?.name, System.currentTimeMillis())
+    fun playChannel(channel: M3uEntry) = channelAction {
+        val video = channelVideo(channel)
         val request = PlaybackRequest(
             url = video.url,
             title = video.displayTitle,
             type = video.type,
+            mimeType = video.mimeType,
             headers = video.headers.toMap(),
             posterUrl = video.posterUrl,
         )
@@ -169,6 +172,21 @@ internal class LocalMediaViewModel @Inject constructor(
     fun launchPlayer(context: Context, request: PlaybackRequest) = playerLauncher.play(context, request)
 
     fun showDeviceChooser(activity: FragmentActivity) = controller.showDeviceChooser(activity)
+
+    private fun channelAction(block: suspend () -> Unit) {
+        viewModelScope.launch { channelActions.withLock { block() } }
+    }
+
+    /**
+     * The video for [channel]. URLs that do not name their format are probed first: extension-less IPTV URLs
+     * serve HLS or raw MPEG-TS, and the player and the receiver must be told which.
+     */
+    private suspend fun channelVideo(channel: M3uEntry) = IptvChannels.toDetectedVideo(
+        channel = channel,
+        playlistName = store.playlist.value?.name,
+        nowMs = System.currentTimeMillis(),
+        resolved = probe.resolve(channel),
+    )
 
     private fun channelState(playlist: IptvPlaylist?, text: String, collapsedGroups: Set<String>) = ChannelListState(
         playlist = playlist,

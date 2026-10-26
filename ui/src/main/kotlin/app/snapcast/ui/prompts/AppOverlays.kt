@@ -24,16 +24,19 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.snapcast.addons.AddonInstallState
+import app.snapcast.browser.BrowserPrompt
 import app.snapcast.ui.R
 import kotlinx.coroutines.launch
 
 /**
- * Dialogs and sheets that can appear over any screen: the first pending web prompt, add-on install
- * permission prompts, install progress snackbars and extension popups.
+ * Dialogs and sheets that can appear over any screen: the oldest pending web prompt of the selected tab
+ * (or one not tied to a tab), add-on install permission prompts, install progress snackbars and extension
+ * popups.
  */
 @Composable
 internal fun AppOverlays(modifier: Modifier = Modifier, viewModel: OverlaysViewModel = hiltViewModel()) {
     val prompts by viewModel.prompts.collectAsStateWithLifecycle()
+    val selectedTabId by viewModel.selectedTabId.collectAsStateWithLifecycle()
     val addonPrompt by viewModel.addonPermissionPrompt.collectAsStateWithLifecycle()
     val installState by viewModel.installState.collectAsStateWithLifecycle()
     val popup by viewModel.popup.collectAsStateWithLifecycle()
@@ -43,7 +46,7 @@ internal fun AppOverlays(modifier: Modifier = Modifier, viewModel: OverlaysViewM
     if (currentAddonPrompt != null) {
         key(currentAddonPrompt.id) { AddonPermissionDialog(currentAddonPrompt) }
     } else {
-        PromptHost(prompt = prompts.firstOrNull())
+        PromptHost(prompt = visiblePrompt(prompts, selectedTabId))
     }
 
     popup?.let { current ->
@@ -66,6 +69,15 @@ internal fun AppOverlays(modifier: Modifier = Modifier, viewModel: OverlaysViewM
         )
     }
 }
+
+/**
+ * The prompt to show: the oldest one of the selected tab, or one not tied to a tab. Only the tab in front
+ * may show dialogs, so a background or private tab cannot put a dialog over another site or block the
+ * selected tab's own prompts. Other tabs' prompts stay pending (hiding one does not answer it) and appear
+ * once their tab is selected; closing a tab dismisses its prompts.
+ */
+internal fun visiblePrompt(prompts: List<BrowserPrompt>, selectedTabId: String?): BrowserPrompt? =
+    prompts.firstOrNull { it.tabId == null || it.tabId == selectedTabId }
 
 /**
  * "Installing…" while an install runs (dismissed automatically when it ends), then "Installed X" or the

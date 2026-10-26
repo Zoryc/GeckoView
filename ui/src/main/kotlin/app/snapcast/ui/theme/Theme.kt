@@ -36,7 +36,7 @@ private val SnapcastTypography: Typography = Typography().let { base ->
 }
 
 /**
- * The app theme. Dark by default (Material 3 dark scheme with Snapcast's coral accent), light for
+ * The app theme. Dark by default (Material 3 dark scheme with Snapcast's blue logo accent), light for
  * [ThemeMode.LIGHT], following the system for [ThemeMode.SYSTEM]. Dynamic color is intentionally off so
  * the brand accent stays consistent. Also keeps the system bar icon colors in sync with the scheme.
  */

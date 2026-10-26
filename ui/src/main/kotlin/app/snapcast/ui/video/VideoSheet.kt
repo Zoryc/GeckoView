@@ -84,6 +84,7 @@ import app.snapcast.ui.theme.SnapcastThemeExtras
 import coil3.compose.AsyncImage
 import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
+import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import kotlinx.coroutines.delay
@@ -480,10 +481,12 @@ private fun VideoThumbnail(video: DetectedVideo) {
         val poster = video.posterUrl?.takeIf { UrlUtils.isHttp(it) }
         if (poster != null) {
             val context = LocalContext.current
-            val request = remember(poster, video.headers, video.cookiesByHost) {
+            val request = remember(poster, video.headers, video.cookiesByHost, video.isPrivate) {
                 ImageRequest.Builder(context)
                     .data(poster)
                     .httpHeaders(posterHeaders(video, poster))
+                    // A private tab's poster stays in memory only, so nothing of it is left on disk.
+                    .diskCachePolicy(if (video.isPrivate) CachePolicy.DISABLED else CachePolicy.ENABLED)
                     .crossfade(true)
                     .build()
             }

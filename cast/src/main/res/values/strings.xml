@@ -25,6 +25,8 @@
     <string name="cast_error_load_failed">The Chromecast couldn\'t load this video.</string>
     <string name="cast_error_playback">The Chromecast stopped playing because of an error.</string>
     <string name="cast_error_queue">Couldn\'t add the video to the queue.</string>
+    <string name="cast_error_queue_empty">The queue is empty.</string>
+    <string name="cast_error_local_network">Allow Nearby devices access so your TV can stream from this phone. You can turn it on in the app\'s permission settings.</string>
     <string name="cast_error_local_file">Couldn\'t open the video file.</string>
     <string name="cast_error_nothing_casting">Start casting a video first.</string>
     <string name="cast_error_subtitle_read">Couldn\'t read the subtitle file.</string>

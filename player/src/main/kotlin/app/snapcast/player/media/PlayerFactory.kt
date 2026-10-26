@@ -66,10 +66,11 @@ internal class PlayerFactory(private val okHttpClient: OkHttpClient) {
 
     /**
      * One configuration per distinct subtitle URL. A subtitle file the user picked themselves is selected
-     * by default; detected page tracks stay off until chosen in the player's subtitle menu.
+     * by default; detected page tracks stay off until chosen in the player's subtitle menu. HLS subtitle
+     * renditions are skipped: they are playlists, which the HLS source already exposes as in-band tracks.
      */
     private fun subtitleConfigurations(tracks: List<SubtitleTrack>): List<MediaItem.SubtitleConfiguration> {
-        val usable = tracks.filter { it.url.isNotBlank() }.distinctBy { it.url }
+        val usable = tracks.filter { it.url.isNotBlank() && !it.isHlsRendition }.distinctBy { it.url }
         val defaultTrack = usable.firstOrNull { it.isLocal }
         return usable.map { track ->
             MediaItem.SubtitleConfiguration.Builder(Uri.parse(track.url))

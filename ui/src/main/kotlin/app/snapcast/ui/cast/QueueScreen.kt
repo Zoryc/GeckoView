@@ -51,10 +51,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.snapcast.ui.R
+import app.snapcast.ui.components.rememberCastPosterRequest
 import app.snapcast.ui.shared.EmptyState
 import app.snapcast.ui.shared.ScreenScaffold
 import app.snapcast.ui.shared.SectionHeader
 import app.snapcast.ui.shared.hostFragmentActivity
+import app.snapcast.ui.shared.rememberLocalNetworkGate
 import coil3.compose.AsyncImage
 
 /** The receiver queue while casting (jump, play next, reorder, remove), otherwise the pending queue. */
@@ -65,6 +67,7 @@ fun QueueScreen(onBack: () -> Unit) {
     val starting by viewModel.startingCast.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val localNetworkGate = rememberLocalNetworkGate()
 
     LaunchedEffect(viewModel, snackbarHostState) {
         viewModel.effects.collect { effect ->
@@ -90,7 +93,7 @@ fun QueueScreen(onBack: () -> Unit) {
         floatingActionButton = {
             if (pending != null && pending.items.isNotEmpty()) {
                 ExtendedFloatingActionButton(
-                    onClick = { if (!starting) viewModel.castQueue() },
+                    onClick = { if (!starting) localNetworkGate { viewModel.castQueue() } },
                     icon = {
                         if (starting) {
                             CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
@@ -301,7 +304,7 @@ private fun QueueThumbnail(posterUrl: String?, isCurrent: Boolean) {
         )
         if (posterUrl != null && !isCurrent) {
             AsyncImage(
-                model = posterUrl,
+                model = rememberCastPosterRequest(posterUrl),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,

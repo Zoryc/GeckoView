@@ -19,6 +19,22 @@ class SubtitleTextTest {
     }
 
     @Test
+    fun `UTF-16 with a BOM is decoded`() {
+        val le = byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + "Déjà vu".toByteArray(Charsets.UTF_16LE)
+        val be = byteArrayOf(0xFE.toByte(), 0xFF.toByte()) + "Déjà vu".toByteArray(Charsets.UTF_16BE)
+        assertThat(SubtitleText.decode(le)).isEqualTo("Déjà vu")
+        assertThat(SubtitleText.decode(be)).isEqualTo("Déjà vu")
+    }
+
+    @Test
+    fun `a UTF-16 SRT file decodes to parseable text`() {
+        val srt = "1\r\n00:00:01,000 --> 00:00:02,500\r\nHello\r\n"
+        val bytes = byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + srt.toByteArray(Charsets.UTF_16LE)
+        assertThat(SubtitleText.decode(bytes)).isEqualTo(srt)
+        assertThat(SubtitleText.decode(byteArrayOf(0xFF.toByte()))).isEqualTo("ÿ")
+    }
+
+    @Test
     fun `format and name come from the file name`() {
         assertThat(SubtitleText.formatFromFileName("movie.en.SRT")).isEqualTo(SubtitleFormat.SRT)
         assertThat(SubtitleText.formatFromFileName("movie.vtt")).isEqualTo(SubtitleFormat.VTT)

@@ -293,6 +293,13 @@ test('dedupeKey matches UrlUtils.normalizeForDedupe', () => {
   assert.equal(C.dedupeKey('https://e.com/v.m3u8?t=abc&cb=x1'), 'https://e.com/v.m3u8?t=abc&cb=x1');
   assert.equal(C.dedupeKey('https://Example.com'), 'https://example.com/');
   assert.equal(C.dedupeKey('https://example.com/?'), 'https://example.com/');
+  // LL-HLS delivery directives are dropped whatever their case, like UrlUtils.normalizeForDedupe.
+  assert.equal(
+    C.dedupeKey('https://e.com/live/media.m3u8?_HLS_msn=273&token=a&_HLS_part=2&_hls_skip=YES'),
+    'https://e.com/live/media.m3u8?token=a',
+  );
+  assert.equal(C.dedupeKey('https://e.com/live/media.m3u8?_HLS_msn=273&_HLS_part=2'), 'https://e.com/live/media.m3u8');
+  assert.equal(C.dedupeKey('https://e.com/v.m3u8?hls_msn=1'), 'https://e.com/v.m3u8?hls_msn=1');
 });
 
 test('compact drops empty values and non-finite numbers', () => {

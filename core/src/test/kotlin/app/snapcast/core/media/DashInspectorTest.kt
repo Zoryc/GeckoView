@@ -86,6 +86,33 @@ class DashInspectorTest {
     }
 
     @Test
+    fun `subtitles with non-network URLs are dropped`() {
+        val mpd = """
+            <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static">
+              <Period>
+                <AdaptationSet contentType="text" mimeType="text/vtt" lang="en">
+                  <Representation id="file" bandwidth="256">
+                    <BaseURL>file:///data/data/app.snapcast/shared_prefs/settings.vtt</BaseURL>
+                  </Representation>
+                </AdaptationSet>
+                <AdaptationSet contentType="text" mimeType="text/vtt" lang="fr">
+                  <Representation id="content" bandwidth="256">
+                    <BaseURL>content://app.snapcast.browser.fileprovider/downloads/fr.vtt</BaseURL>
+                  </Representation>
+                </AdaptationSet>
+                <AdaptationSet contentType="text" mimeType="text/vtt" lang="de">
+                  <Representation id="http" bandwidth="256">
+                    <BaseURL>de.vtt</BaseURL>
+                  </Representation>
+                </AdaptationSet>
+              </Period>
+            </MPD>
+        """.trimIndent()
+        val info = DashInspector.inspect(mpd, manifestUrl)!!
+        assertThat(info.subtitles.map { it.url }).containsExactly("https://cdn.example.com/dash/movie/de.vtt")
+    }
+
+    @Test
     fun `dynamic manifest is live`() {
         val mpd = """
             <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="dynamic" availabilityStartTime="2026-01-01T00:00:00Z"

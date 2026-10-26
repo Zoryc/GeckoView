@@ -29,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,8 +39,6 @@ import app.snapcast.core.util.Formatters
 import app.snapcast.ui.R
 import app.snapcast.ui.theme.SnapcastThemeExtras
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
-import coil3.request.crossfade
 
 /**
  * Compact "now casting" bar: poster, title, receiver name, progress and play/pause.
@@ -149,7 +146,7 @@ private fun MiniPoster(posterUrl: String?) {
         )
         if (!posterUrl.isNullOrBlank()) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(posterUrl).crossfade(true).build(),
+                model = rememberCastPosterRequest(posterUrl, crossfade = true),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize(),

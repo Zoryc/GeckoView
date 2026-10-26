@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Snapcast video detector",
   "description": "Finds the video streams of the pages you browse so Snapcast can list and cast them.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "browser_specific_settings": {
     "gecko": {
       "id": "detector@snapcast.app"

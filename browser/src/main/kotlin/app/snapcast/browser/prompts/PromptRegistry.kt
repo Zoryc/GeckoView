@@ -8,19 +8,34 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-/** Pending [BrowserPrompt]s, oldest first, exposed as `BrowserTabs.prompts`. */
+/** Pending [BrowserPrompt]s, oldest first, exposed as `BrowserTabs.prompts`. Main thread only. */
 @Singleton
 internal class PromptRegistry @Inject constructor() {
     private val _prompts = MutableStateFlow<List<BrowserPrompt>>(emptyList())
 
     val prompts: StateFlow<List<BrowserPrompt>> = _prompts.asStateFlow()
 
-    fun add(prompt: BrowserPrompt) {
+    /** Prompt id -> owner of prompts raised by sessions that are not tabs (an extension popup). */
+    private val owners = HashMap<String, String>()
+
+    /** @param owner set for prompts of a session that is not a tab, so [dismissOwnedBy] can cancel them */
+    fun add(prompt: BrowserPrompt, owner: String? = null) {
+        if (owner != null) owners[prompt.id] = owner
         _prompts.update { it + prompt }
     }
 
     fun remove(id: String) {
+        owners.remove(id)
         _prompts.update { list -> list.filterNot { it.id == id } }
+    }
+
+    /** Answers every prompt added with [owner] with its "cancel" result (its session is going away). */
+    fun dismissOwnedBy(owner: String) {
+        val ids = owners.filterValues { it == owner }.keys.toSet()
+        if (ids.isEmpty()) return
+        _prompts.value.filter { it.id in ids }.forEach { it.dismiss() }
+        _prompts.update { list -> list.filterNot { it.id in ids } }
+        owners.keys.removeAll(ids)
     }
 
     /** Dismisses the site-permission prompts of a tab that navigated to another site. */

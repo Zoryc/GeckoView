@@ -142,7 +142,11 @@ internal class ProxyResponse(
     companion object {
         /** The message NanoHTTPD's ClientHandler treats as an orderly connection close (nothing is logged). */
         const val NANOHTTPD_SHUTDOWN = "NanoHttpd Shutdown"
-        private const val BUFFER_SIZE = 16 * 1024
+        /**
+         * Copy buffer for bodies (and the socket's output buffer). 64 KiB moves a typical segment in few
+         * read/write/flush rounds, so the radio and CPU wake less often per second of video.
+         */
+        private const val BUFFER_SIZE = 64 * 1024
         private val CRLF = byteArrayOf('\r'.code.toByte(), '\n'.code.toByte())
         private val LAST_CHUNK = "0\r\n\r\n".toByteArray(Charsets.US_ASCII)
         /** IMF-fixdate (RFC 9110 section 5.6.7). */

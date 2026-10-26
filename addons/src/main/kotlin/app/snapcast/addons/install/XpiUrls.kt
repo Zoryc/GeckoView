@@ -35,6 +35,30 @@ internal object XpiUrls {
     fun isXpiMimeType(contentType: String?): Boolean =
         contentType?.substringBefore(';')?.trim()?.equals(XPI_MIME_TYPE, ignoreCase = true) == true
 
+    /**
+     * True when [a] and [b] name the same resource, to match a response to the load that requested it:
+     * fragments are ignored, scheme and host case-insensitively, and http equals https (Gecko upgrades
+     * http loads with internal redirects it does not report). Only http(s) URLs ever match.
+     */
+    fun sameResource(a: String, b: String): Boolean {
+        val left = resourceKey(a) ?: return false
+        return left == resourceKey(b)
+    }
+
+    private fun resourceKey(url: String): String? {
+        val trimmed = url.trim().substringBefore('#')
+        val schemeEnd = trimmed.indexOf("://")
+        if (schemeEnd <= 0) return null
+        val scheme = trimmed.substring(0, schemeEnd)
+        if (!scheme.equals("http", ignoreCase = true) && !scheme.equals("https", ignoreCase = true)) return null
+        val rest = trimmed.substring(schemeEnd + 3)
+        val end = rest.indexOfAny(charArrayOf('/', '?')).let { if (it < 0) rest.length else it }
+        val authority = rest.substring(0, end).lowercase()
+        if (authority.isEmpty()) return null
+        val tail = rest.substring(end)
+        return authority + if (tail.startsWith('/')) tail else "/$tail"
+    }
+
     private fun contentTypeOf(headers: Map<String, String>): String? =
         headers.entries.firstOrNull { it.key.equals(CONTENT_TYPE, ignoreCase = true) }?.value
 

@@ -84,6 +84,7 @@ import app.snapcast.ui.shared.ScreenScaffold
 import app.snapcast.ui.shared.SectionHeader
 import app.snapcast.ui.shared.hostFragmentActivity
 import app.snapcast.ui.shared.quantityString
+import app.snapcast.ui.shared.rememberLocalNetworkGate
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 
@@ -113,6 +114,7 @@ fun LocalMediaScreen(onBack: () -> Unit, onOpenUrl: (String) -> Unit) {
 
     LaunchedEffect(query) { viewModel.setQuery(query) }
     LocalEffects(viewModel, snackbarHostState)
+    val localNetworkGate = rememberLocalNetworkGate()
 
     val castVideo = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.castLocalVideo(uri)
@@ -145,7 +147,7 @@ fun LocalMediaScreen(onBack: () -> Unit, onOpenUrl: (String) -> Unit) {
             item(key = "phone-header") { SectionHeader(stringResource(R.string.ui_screens_local_phone_section)) }
             item(key = "phone-card") {
                 PhoneVideoCard(
-                    onCast = { pick(castVideo, VIDEO_MIME_TYPES) },
+                    onCast = { localNetworkGate { pick(castVideo, VIDEO_MIME_TYPES) } },
                     onPlay = { pick(playVideo, VIDEO_MIME_TYPES) },
                 )
             }
@@ -167,9 +169,9 @@ fun LocalMediaScreen(onBack: () -> Unit, onOpenUrl: (String) -> Unit) {
                 channelItems(
                     state = channels,
                     onToggleGroup = viewModel::toggleGroup,
-                    onCast = viewModel::castChannel,
+                    onCast = { channel -> localNetworkGate { viewModel.castChannel(channel) } },
                     onPlay = viewModel::playChannel,
-                    onQueue = viewModel::queueChannel,
+                    onQueue = { channel -> localNetworkGate { viewModel.queueChannel(channel) } },
                     onOpenInBrowser = { onOpenUrl(it.url) },
                 )
             }

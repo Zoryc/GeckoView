@@ -147,6 +147,8 @@ object DashInspector {
         val base = rep.childElements("BaseURL").firstOrNull()?.textContent?.trim()
         if (base.isNullOrEmpty()) return null
         val url = UrlUtils.resolve(setBase, base)
+        // A manifest may name any scheme; only network files are subtitles (never file:// or content://).
+        if (!UrlUtils.isHttp(url)) return null
         val format = MediaClassifier.subtitleFormatFromUrl(url) ?: return null
         val label = set.childElements("Label").firstOrNull()?.textContent?.trim()?.takeIf { it.isNotEmpty() }
             ?: set.attr("label")

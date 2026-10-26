@@ -24,8 +24,9 @@ sealed interface ExternalOpenResult {
 
 /**
  * Starts an activity for a link the engine cannot handle (intent:, mailto:, tel:, market:, app links).
- * Intent URIs are sanitized (browsable category, no explicit component/selector) so pages cannot target
- * private components. Falls back to `S.browser_fallback_url`, then to the Play Store page of the intent's package.
+ * Intent URIs are sanitized (browsable category, no explicit component/selector, no file: data) so pages
+ * cannot target private components or local files. Malformed URIs and failed launches never throw. Falls
+ * back to `S.browser_fallback_url`, then to the Play Store page of the intent's package.
  */
 fun openExternalUri(context: Context, uri: String): ExternalOpenResult {
     val intent = try {
@@ -33,12 +34,19 @@ fun openExternalUri(context: Context, uri: String): ExternalOpenResult {
     } catch (e: URISyntaxException) {
         Log.w(TAG, "Malformed external URI", e)
         null
+    } catch (e: IllegalArgumentException) {
+        // NumberFormatException from malformed i./l./f./launchFlags= values; parseUri does not wrap it.
+        Log.w(TAG, "Malformed external URI", e)
+        null
     }
     if (intent != null) {
         intent.addCategory(Intent.CATEGORY_BROWSABLE)
         intent.component = null
         intent.selector = null
-        if (tryStart(context, intent)) return ExternalOpenResult.Launched
+        // Pages must not hand file: URIs to other apps (FileUriExposedException, and it would expose local
+        // files); such intents only get the web/market fallbacks, as in Chrome.
+        val localFile = intent.data?.scheme.equals("file", ignoreCase = true)
+        if (!localFile && tryStart(context, intent)) return ExternalOpenResult.Launched
     }
     IntentUriParser.fallbackUrl(uri)?.let { return ExternalOpenResult.Fallback(it) }
     val pkg = intent?.`package` ?: IntentUriParser.packageName(uri)
@@ -92,8 +100,10 @@ private fun tryStart(context: Context, intent: Intent): Boolean {
         true
     } catch (e: ActivityNotFoundException) {
         false
-    } catch (e: SecurityException) {
-        Log.w(TAG, "Not allowed to start $intent", e)
+    } catch (e: RuntimeException) {
+        // SecurityException, FileUriExposedException (file:// data with targetSdk >= N) and binder failures
+        // such as an oversized intent (TransactionTooLargeException wrapped in a RuntimeException).
+        Log.w(TAG, "Could not start activity", e)
         false
     }
 }

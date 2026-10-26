@@ -463,6 +463,26 @@ test('the top frame greets the background again when it did not answer', async (
   assert.equal(runtime.sent.filter((m) => m.kind === 'snapcast-hello').length, 2);
 });
 
+test('a hello request from a restarted background makes the top frame say hello again', async () => {
+  const frame = startFrame();
+  await settle();
+  const hellos = () => frame.runtime.sent.filter((m) => m.kind === 'snapcast-hello');
+  assert.equal(hellos().length, 1);
+  frame.runtime.replies['snapcast-hello'] = { messages: [{ type: 'media', items: [{ url: 'https://cdn.example/late.m3u8', source: 'network' }] }] };
+  assert.deepEqual(frame.runtime.onMessage.fire({ kind: 'snapcast-hello-request' }), [undefined]);
+  await settle();
+  assert.equal(hellos().length, 2);
+  assert.deepEqual(hellos()[1], { kind: 'snapcast-hello', url: PAGE, title: 'Watch page' });
+  const port = frame.runtime.ports[0];
+  assert.deepEqual(port.posted[port.posted.length - 1], { type: 'media', items: [{ url: 'https://cdn.example/late.m3u8', source: 'network' }] });
+
+  // Child frames never say hello.
+  const child = startFrame({ url: 'https://player.example/embed', isTop: false });
+  child.runtime.onMessage.fire({ kind: 'snapcast-hello-request' });
+  await settle();
+  assert.equal(child.runtime.sent.some((m) => m.kind === 'snapcast-hello'), false);
+});
+
 test('the top frame relays deliveries from the background to the app', () => {
   const frame = startFrame();
   const port = frame.runtime.ports[0];
