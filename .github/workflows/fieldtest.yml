@@ -76,6 +76,9 @@ jobs:
       - name: Site request log
         if: always()
         run: |
+          echo "::group::Requests per step"
+          python3 scripts/fieldtest/summarize.py "$RUNNER_TEMP/site.log" || true
+          echo "::endgroup::"
           echo "::group::Refused requests"
           grep '"status": 403' "$RUNNER_TEMP/site.log" || echo "(none)"
           echo "::endgroup::"

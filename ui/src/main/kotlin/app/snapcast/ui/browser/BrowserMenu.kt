@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -59,6 +60,7 @@ internal class BrowserMenuActions(
     val toggleDesktopMode: () -> Unit,
     val share: () -> Unit,
     val castLocal: () -> Unit,
+    val reportProblem: () -> Unit,
     val settings: () -> Unit,
 )
 
@@ -135,6 +137,13 @@ internal fun BrowserMenu(
             onClick = closing(actions.share),
         )
         MenuItem(R.string.ui_browser_cast_local, Icons.Filled.CastConnected, closing(actions.castLocal))
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.ui_browser_report_problem)) },
+            leadingIcon = { Icon(Icons.Filled.Flag, contentDescription = null) },
+            // Nothing of a private tab is ever put in a report.
+            enabled = isWebPage && tab?.isPrivate != true,
+            onClick = closing(actions.reportProblem),
+        )
         HorizontalDivider()
         MenuItem(R.string.ui_browser_settings, Icons.Filled.Settings, closing(actions.settings))
     }

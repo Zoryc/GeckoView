@@ -10,6 +10,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import app.snapcast.data.playback.PlaybackPositionRepository
 import app.snapcast.core.util.UrlUtils
+import app.snapcast.data.diagnostics.DiagnosticsLog
 import app.snapcast.player.error.PlaybackErrorMessages
 import app.snapcast.player.error.PlayerErrorKind
 import app.snapcast.player.error.PlayerErrorUi
@@ -49,6 +50,7 @@ internal class PlaybackController(
     private val positionWriter: PositionWriter,
     private val resumeEnabled: () -> Boolean,
     private val scope: CoroutineScope,
+    private val diagnostics: DiagnosticsLog? = null,
 ) {
     private val _state = MutableStateFlow(PlaybackUiState())
     val state: StateFlow<PlaybackUiState> = _state.asStateFlow()
@@ -225,6 +227,10 @@ internal class PlaybackController(
         val canReload = pageUrl != null && UrlUtils.isHttp(pageUrl) &&
             (described.kind == PlayerErrorKind.HTTP_FORBIDDEN || described.kind == PlayerErrorKind.HTTP_NOT_FOUND)
         _state.update { it.copy(error = described.copy(canReloadPage = canReload), resumedAtMs = null) }
+        if (request?.isPrivate == false) {
+            val http = described.httpStatus?.let { "HTTP $it from ${described.failedHost ?: UrlUtils.hostOf(request?.url.orEmpty())}" }
+            diagnostics?.record("player", listOfNotNull(described.kind.name, http, "(${described.detail})").joinToString(" "))
+        }
         onPlaybackChanged()
     }
 

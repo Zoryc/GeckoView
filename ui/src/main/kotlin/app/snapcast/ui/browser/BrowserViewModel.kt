@@ -14,21 +14,28 @@ import app.snapcast.cast.CastConnectionState
 import app.snapcast.cast.CastController
 import app.snapcast.cast.CastDeviceInfo
 import app.snapcast.cast.CastErrorKind
+import app.snapcast.cast.CastEvent
 import app.snapcast.cast.CastResult
 import app.snapcast.cast.RemotePlaybackState
 import app.snapcast.core.model.AppSettings
 import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.SubtitleTrack
 import app.snapcast.core.model.VideoVariant
+import app.snapcast.core.report.ProblemKind
+import app.snapcast.core.report.ReportEnvironment
+import app.snapcast.core.report.ReportEvent
+import app.snapcast.core.report.SiteReport
 import app.snapcast.core.util.CookieHeaders
 import app.snapcast.core.util.UrlUtils
 import app.snapcast.data.bookmarks.BookmarkRepository
+import app.snapcast.data.diagnostics.DiagnosticsLog
 import app.snapcast.data.history.HistoryRepository
 import app.snapcast.data.settings.SettingsRepository
 import app.snapcast.detection.DetectedVideoRepository
 import app.snapcast.player.PlaybackQuality
 import app.snapcast.player.PlaybackRequest
 import app.snapcast.player.PlayerLauncher
+import coil3.network.HttpException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -87,6 +94,7 @@ internal class BrowserViewModel @Inject constructor(
     private val historyRepository: HistoryRepository,
     private val bookmarkRepository: BookmarkRepository,
     private val playerLauncher: PlayerLauncher,
+    private val diagnostics: DiagnosticsLog,
 ) : ViewModel() {
 
     private val whileSubscribed = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS)
@@ -162,7 +170,10 @@ internal class BrowserViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            castController.events.collect { uiEventChannel.trySend(BrowserUiEvent.Cast(it)) }
+            castController.events.collect { event ->
+                if (event is CastEvent.Error) diagnostics.record("cast", "${event.kind}: ${event.message}")
+                uiEventChannel.trySend(BrowserUiEvent.Cast(event))
+            }
         }
         viewModelScope.launch {
             browserTabs.tabs.collect { tabs ->
@@ -303,6 +314,34 @@ internal class BrowserViewModel @Inject constructor(
         browserTabs.selectedTabId.value?.let(videoRepository::requestRescan)
     }
 
+    /** A poster in the video list could not be loaded: note why (host and status only) and ask for a frame. */
+    fun posterFailed(video: DetectedVideo, error: Throwable) {
+        if (!video.isPrivate) {
+            val host = video.posterUrl?.let(UrlUtils::hostOf) ?: "?"
+            val reason = if (error is HttpException) "HTTP ${error.response.code}" else error::class.java.simpleName
+            diagnostics.record("poster", "$reason from $host")
+        }
+        requestThumbnails()
+    }
+
+    /**
+     * A problem report about the selected tab's site, or null on the home page or in a private tab (nothing of a
+     * private tab is ever put in a report). Built on demand; nothing is sent from here.
+     */
+    fun siteReport(kind: ProblemKind, details: String, includePageUrl: Boolean, environment: ReportEnvironment): SiteReport? {
+        val tab = selectedTab.value?.takeUnless { it.isHome || it.isPrivate } ?: return null
+        if (!UrlUtils.isHttp(tab.url)) return null
+        return SiteReport(
+            pageUrl = tab.url,
+            kind = kind,
+            details = details,
+            includePageUrl = includePageUrl,
+            environment = environment,
+            videos = videos.value,
+            events = diagnostics.recent().map { ReportEvent(it.atMs, it.source, it.message) },
+        )
+    }
+
     /** The open video list has videos without a usable picture: ask the page for frame captures. */
     fun requestThumbnails() {
         val now = System.currentTimeMillis()
@@ -314,6 +353,7 @@ internal class BrowserViewModel @Inject constructor(
     fun cast(video: DetectedVideo, variant: VideoVariant? = null, subtitle: SubtitleTrack? = null, direct: Boolean = false) {
         viewModelScope.launch {
             val result = safeCast { castController.cast(video, variant, subtitle, direct) }
+            recordCastFailure(video, result)
             uiEventChannel.trySend(BrowserUiEvent.CastOutcome(result, video, queued = false))
         }
     }
@@ -321,7 +361,14 @@ internal class BrowserViewModel @Inject constructor(
     fun addToQueue(video: DetectedVideo, variant: VideoVariant? = null) {
         viewModelScope.launch {
             val result = safeCast { castController.addToQueue(video, variant) }
+            recordCastFailure(video, result)
             uiEventChannel.trySend(BrowserUiEvent.CastOutcome(result, video, queued = true))
+        }
+    }
+
+    private fun recordCastFailure(video: DetectedVideo, result: CastResult) {
+        if (result is CastResult.Error && !video.isPrivate) {
+            diagnostics.record("cast", "${result.kind} for ${video.sourceDomain}: ${result.message}")
         }
     }
 
@@ -426,6 +473,11 @@ internal class BrowserViewModel @Inject constructor(
 
     fun dismissContextMenu() {
         _contextMenu.value = null
+    }
+
+    /** Opens [url] in a new tab next to the current one and shows it. */
+    fun openInNewTab(url: String) {
+        browserTabs.newTab(url = url, private = false, select = true, parentId = browserTabs.selectedTabId.value)
     }
 
     /** Opens [url] in a background tab whose parent is the current tab, and offers to switch to it. */

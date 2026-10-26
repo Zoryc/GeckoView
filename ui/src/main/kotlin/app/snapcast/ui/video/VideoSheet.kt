@@ -56,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -109,7 +110,10 @@ fun VideoSheet(
     actions: VideoActions,
     onRescan: () -> Unit,
     onNeedThumbnails: () -> Unit,
+    onPosterFailed: (DetectedVideo, Throwable) -> Unit,
     onDismiss: () -> Unit,
+    /** Opens "Report a site problem"; null hides the link (private tabs). */
+    onReportProblem: (() -> Unit)? = null,
 ) {
     // Asked again whenever a video without poster or frame shows up; the page captures each video once.
     val missingPictures = videos.filter { it.posterUrl == null && it.frameThumbnail == null }.map { it.id }
@@ -144,16 +148,18 @@ fun VideoSheet(
                 targetState = videos.isEmpty(),
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
                 label = "videoSheetContent",
+                // A long list scrolls instead of pushing the report link off the sheet.
+                modifier = Modifier.weight(1f, fill = false),
             ) { empty ->
                 if (empty) {
                     EmptyVideos(isDetectorReady = isDetectorReady, onRescan = onRescan)
                 } else {
-                    LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
+                    LazyColumn(contentPadding = PaddingValues(bottom = if (onReportProblem != null) 0.dp else 16.dp)) {
                         items(videos, key = { it.id }) { video ->
                             VideoItem(
                                 video = video,
                                 actions = sheetActions,
-                                onPictureFailed = onNeedThumbnails,
+                                onPosterFailed = { error -> onPosterFailed(video, error) },
                                 modifier = Modifier.animateItem(),
                             )
                             HorizontalDivider(
@@ -162,6 +168,16 @@ fun VideoSheet(
                             )
                         }
                     }
+                }
+            }
+            if (onReportProblem != null) {
+                TextButton(
+                    onClick = { closeThen(onReportProblem) },
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(bottom = 8.dp),
+                ) {
+                    Text(stringResource(R.string.ui_video_report_problem), style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -230,7 +246,12 @@ private fun EmptyVideos(isDetectorReady: Boolean, onRescan: () -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun VideoItem(video: DetectedVideo, actions: VideoActions, onPictureFailed: () -> Unit, modifier: Modifier = Modifier) {
+private fun VideoItem(
+    video: DetectedVideo,
+    actions: VideoActions,
+    onPosterFailed: (Throwable) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val drm = video.isDrmProtected
     // The quality picked in "Choose quality" (by variant URL); Cast, Play, Queue and Subtitles all use it.
     var pickedUrl by rememberSaveable(video.id) { mutableStateOf<String?>(null) }
@@ -256,7 +277,7 @@ private fun VideoItem(video: DetectedVideo, actions: VideoActions, onPictureFail
 
     Column(modifier = modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row {
-            VideoThumbnail(video, onPictureFailed)
+            VideoThumbnail(video, onPosterFailed)
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -490,10 +511,10 @@ private fun posterHeaders(video: DetectedVideo, posterUrl: String): NetworkHeade
 
 /**
  * The video's poster, else (or when the poster cannot be loaded) the frame captured in the page, else the
- * type icon. A failed poster is logged and asks the page for a frame ([onPictureFailed]).
+ * type icon. A failed poster is logged and reported ([onPosterFailed], which asks the page for a frame).
  */
 @Composable
-private fun VideoThumbnail(video: DetectedVideo, onPictureFailed: () -> Unit) {
+private fun VideoThumbnail(video: DetectedVideo, onPosterFailed: (Throwable) -> Unit) {
     Box(
         modifier = Modifier
             .size(width = 120.dp, height = 68.dp)
@@ -528,7 +549,7 @@ private fun VideoThumbnail(video: DetectedVideo, onPictureFailed: () -> Unit) {
                 onError = { error ->
                     Log.w(POSTER_TAG, "Poster of ${UrlUtils.hostOf(poster)} failed: ${error.result.throwable}")
                     posterFailed = true
-                    onPictureFailed()
+                    onPosterFailed(error.result.throwable)
                 },
                 modifier = Modifier.matchParentSize(),
             )

@@ -55,11 +55,13 @@ import app.snapcast.cast.CastConnectionState
 import app.snapcast.cast.CastResult
 import app.snapcast.cast.RemotePlaybackState
 import app.snapcast.core.model.DetectedVideo
+import app.snapcast.core.util.UrlUtils
 import app.snapcast.ui.R
 import app.snapcast.ui.components.FullscreenEffect
 import app.snapcast.ui.components.GeckoViewHost
 import app.snapcast.ui.components.MiniController
 import app.snapcast.ui.home.HomeScreen
+import app.snapcast.ui.report.ReportProblemDialog
 import app.snapcast.ui.util.copyToClipboard
 import app.snapcast.ui.util.openWithOtherApp
 import app.snapcast.ui.util.shareText
@@ -113,6 +115,7 @@ internal fun BrowserScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showVideoSheet by rememberSaveable { mutableStateOf(false) }
     var showDrmDialog by remember { mutableStateOf(false) }
+    var showReport by rememberSaveable { mutableStateOf(false) }
     var castError by remember { mutableStateOf<CastResult.Error?>(null) }
 
     val currentTab = tab
@@ -195,7 +198,7 @@ internal fun BrowserScreen(
                             tab = currentTab,
                             isBookmarked = isBookmarked,
                             extensionActions = extensionActions,
-                            actions = rememberMenuActions(viewModel, navigation, currentTab),
+                            actions = rememberMenuActions(viewModel, navigation, currentTab, onReportProblem = { showReport = true }),
                         )
                     },
                 )
@@ -255,8 +258,25 @@ internal fun BrowserScreen(
             actions = videoActions,
             onRescan = viewModel::rescanVideos,
             onNeedThumbnails = viewModel::requestThumbnails,
+            onPosterFailed = viewModel::posterFailed,
             onDismiss = { showVideoSheet = false },
+            onReportProblem = { showReport = true }.takeIf { currentTab != null && !currentTab.isPrivate && !currentTab.isHome },
         )
+    }
+
+    if (showReport) {
+        val reportTab = currentTab
+        if (reportTab != null && !reportTab.isHome && !reportTab.isPrivate) {
+            ReportProblemDialog(
+                siteHost = UrlUtils.hostOf(reportTab.url)?.removePrefix("www.") ?: reportTab.url,
+                buildReport = viewModel::siteReport,
+                onOpenInApp = viewModel::openInNewTab,
+                onDismiss = { showReport = false },
+            )
+        } else {
+            // The tab changed to one a report can't be about (home, private): drop the request.
+            LaunchedEffect(Unit) { showReport = false }
+        }
     }
 
     contextMenu?.let { menuState ->
@@ -459,6 +479,7 @@ private fun rememberMenuActions(
     viewModel: BrowserViewModel,
     navigation: BrowserNavigation,
     tab: TabState?,
+    onReportProblem: () -> Unit,
 ): BrowserMenuActions {
     val context = LocalContext.current
     val shareTitle = stringResource(R.string.ui_browser_share)
@@ -479,6 +500,7 @@ private fun rememberMenuActions(
                 if (tab != null && !tab.isHome) shareText(context, tab.url, tab.title, shareTitle)
             },
             castLocal = navigation.openLocalMedia,
+            reportProblem = onReportProblem,
             settings = navigation.openSettings,
         )
     }

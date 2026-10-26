@@ -4,6 +4,8 @@ import app.snapcast.data.AppInitializer
 import app.snapcast.data.bookmarks.BookmarkRepository
 import app.snapcast.data.bookmarks.DefaultBookmarksInitializer
 import app.snapcast.data.bookmarks.RoomBookmarkRepository
+import app.snapcast.data.diagnostics.DiagnosticsLog
+import app.snapcast.data.diagnostics.InMemoryDiagnosticsLog
 import app.snapcast.data.history.HistoryRepository
 import app.snapcast.data.history.RoomHistoryRepository
 import app.snapcast.data.playback.PlaybackPositionRepository
@@ -36,6 +38,9 @@ internal abstract class DataBindingsModule {
 
     @Binds
     abstract fun bindTabSessionStore(impl: FileTabSessionStore): TabSessionStore
+
+    @Binds
+    abstract fun bindDiagnosticsLog(impl: InMemoryDiagnosticsLog): DiagnosticsLog
 
     @Binds
     @IntoSet

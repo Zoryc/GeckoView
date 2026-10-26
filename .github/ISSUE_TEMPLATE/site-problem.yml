@@ -1,0 +1,36 @@
+name: Site problem
+description: A site where Snapcast doesn't find, play or cast a video as it should. The app fills this in for you (menu > Report a site problem).
+title: "site: problem"
+labels: ["site problem"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please don't paste cookies, tokens or video links: the site's name and what happened are enough.
+        DRM-protected services (Netflix, Disney+…) can't be supported.
+  - type: input
+    id: site
+    attributes:
+      label: Site
+      description: The site's name (example.com). Add the page address only if you're fine sharing it.
+      placeholder: example.com
+    validations:
+      required: true
+  - type: input
+    id: problem
+    attributes:
+      label: Problem
+      description: Video not found, won't play, casting fails, no thumbnail, wrong quality, or something else.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what you saw (error messages help).
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Filled in by the app. Lists the app and Android versions, the videos it found (type, quality, host) and recent errors.
+      render: markdown

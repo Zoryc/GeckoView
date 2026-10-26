@@ -108,6 +108,8 @@ class Handler(BaseHTTPRequestHandler):
         sub = host.split(".")[0]
         url = urlparse(self.path)
         q = parse_qs(url.query)
+        if url.path == "/__mark":  # the test driver marks where each step starts in the log
+            return self._send(200, b"ok", reason="MARK " + (q.get("step") or ["?"])[0])
         d = self.server.media_dir
         base = f"{self.server.base}:{self.server.port}"
 

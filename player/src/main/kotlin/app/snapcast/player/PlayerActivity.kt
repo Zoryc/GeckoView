@@ -22,6 +22,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import app.snapcast.data.di.ApplicationScope
+import app.snapcast.data.diagnostics.DiagnosticsLog
 import app.snapcast.data.playback.PlaybackPositionRepository
 import app.snapcast.data.settings.SettingsRepository
 import app.snapcast.player.media.PlayerFactory
@@ -61,6 +62,9 @@ class PlayerActivity : ComponentActivity() {
     @Inject
     lateinit var playerLauncher: PlayerLauncher
 
+    @Inject
+    lateinit var diagnosticsLog: DiagnosticsLog
+
     // Null when the activity finished in onCreate because the launch intent had no usable request.
     private var playback: PlaybackController? = null
     private var positionWriter: PositionWriter? = null
@@ -88,6 +92,7 @@ class PlayerActivity : ComponentActivity() {
             positionWriter = writer,
             resumeEnabled = { settingsRepository.settings.value.resumePlayback },
             scope = lifecycleScope,
+            diagnostics = diagnosticsLog,
         )
         val pip = PictureInPictureController(this, onPlay = controller::play, onPause = controller::pause)
         controller.onPlaybackChanged = ::updatePictureInPictureParams

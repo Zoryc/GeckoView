@@ -12,6 +12,9 @@ internal data class PlayerErrorUi(
     val detail: String,
     /** The link was refused or is gone and the page it came from is known: offer to reload it and play again. */
     val canReloadPage: Boolean = false,
+    /** HTTP status of the failed request and the host it went to, when the failure was an HTTP error. */
+    val httpStatus: Int? = null,
+    val failedHost: String? = null,
 ) {
     /** Retrying cannot help with protected content or a format the device's player doesn't handle. */
     val canRetry: Boolean
@@ -22,7 +25,8 @@ internal data class PlayerErrorUi(
 internal object PlaybackErrorMessages {
 
     fun describe(resources: Resources, error: PlaybackException): PlayerErrorUi {
-        val status = httpStatusOf(error)
+        val http = httpErrorOf(error)
+        val status = http?.responseCode
         val kind = PlayerErrorKind.classify(error.errorCode, status)
         val message = when (kind) {
             PlayerErrorKind.HTTP_FORBIDDEN -> resources.getString(R.string.player_error_http_forbidden, status)
@@ -47,15 +51,21 @@ internal object PlaybackErrorMessages {
             PlayerErrorKind.BEHIND_LIVE_WINDOW -> resources.getString(R.string.player_error_live_window)
             PlayerErrorKind.UNKNOWN -> resources.getString(R.string.player_error_unknown)
         }
-        return PlayerErrorUi(kind = kind, message = message, detail = error.errorCodeName)
+        return PlayerErrorUi(
+            kind = kind,
+            message = message,
+            detail = error.errorCodeName,
+            httpStatus = status,
+            failedHost = http?.dataSpec?.uri?.host,
+        )
     }
 
-    /** HTTP status of the first invalid-response-code exception in the cause chain, if any. */
-    private fun httpStatusOf(error: Throwable): Int? {
+    /** The first invalid-response-code exception in the cause chain, if any. */
+    private fun httpErrorOf(error: Throwable): HttpDataSource.InvalidResponseCodeException? {
         var cause: Throwable? = error
         var depth = 0
         while (cause != null && depth < MAX_CAUSE_DEPTH) {
-            if (cause is HttpDataSource.InvalidResponseCodeException) return cause.responseCode
+            if (cause is HttpDataSource.InvalidResponseCodeException) return cause
             cause = cause.cause
             depth++
         }
