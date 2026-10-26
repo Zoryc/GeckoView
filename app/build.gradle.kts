@@ -68,6 +68,10 @@ android {
 
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/INDEX.LIST")
+        // Compress native libraries (mostly GeckoView's libxul.so) inside the APK. This halves the
+        // download (~199 MB -> ~97 MB for arm64); Android extracts them once at install time.
+        // Firefox for Android does the same for its APK builds.
+        jniLibs.useLegacyPackaging = true
     }
 }
 
