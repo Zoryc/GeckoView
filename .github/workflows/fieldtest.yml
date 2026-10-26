@@ -1,0 +1,102 @@
+name: Field test
+
+# Runs Snapcast on an emulator against a local test site that behaves like real streaming sites
+# (player in a cross-host iframe, Referer/cookie/token-protected HLS, hotlink-protected images) and
+# prints what the app showed and which requests the site refused.
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: Which build to test
+        type: choice
+        options: [release, debug, both]
+        default: both
+
+concurrency:
+  group: fieldtest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fieldtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Build APKs
+        run: |
+          tasks=""
+          case "${{ inputs.build }}" in
+            release) tasks=":app:assembleRelease" ;;
+            debug) tasks=":app:assembleDebug" ;;
+            *) tasks=":app:assembleRelease :app:assembleDebug" ;;
+          esac
+          ./gradlew $tasks
+
+      - name: Generate test media
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core >/dev/null
+          bash scripts/fieldtest/make_media.sh "$RUNNER_TEMP/media"
+
+      - name: Start test site
+        run: |
+          nohup python3 scripts/fieldtest/server.py --port 8080 --media "$RUNNER_TEMP/media" --log "$RUNNER_TEMP/site.log" > "$RUNNER_TEMP/server.out" 2>&1 &
+          sleep 2
+          curl -fsS -H "Host: site.10.0.2.2.nip.io:8080" http://127.0.0.1:8080/ | head -5
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          BUILDS: ${{ inputs.build }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          ram-size: 4096M
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            if [ "$BUILDS" != "debug" ]; then bash scripts/fieldtest/run.sh app/build/outputs/apk/release/app-x86_64-release.apk release build/fieldtest; fi
+            if [ "$BUILDS" != "release" ]; then bash scripts/fieldtest/run.sh app/build/outputs/apk/debug/app-x86_64-debug.apk debug build/fieldtest; fi
+
+      - name: Site request log
+        if: always()
+        run: |
+          echo "::group::Refused requests"
+          grep '"status": 403' "$RUNNER_TEMP/site.log" || echo "(none)"
+          echo "::endgroup::"
+          echo "::group::All requests"
+          cat "$RUNNER_TEMP/site.log" || true
+          echo "::endgroup::"
+
+      - name: Screenshots (inline, base64 JPEG)
+        if: always()
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          import base64, glob, io, os
+          from PIL import Image
+          for path in sorted(glob.glob("build/fieldtest/*.png")):
+              img = Image.open(path).convert("RGB")
+              img = img.resize((360, round(img.height * 360 / img.width)))
+              buf = io.BytesIO(); img.save(buf, "JPEG", quality=60)
+              data = base64.b64encode(buf.getvalue()).decode()
+              name = os.path.basename(path)[:-4]
+              chunks = [data[i:i + 6000] for i in range(0, len(data), 6000)]
+              for i, chunk in enumerate(chunks):
+                  print(f"SHOT {name} {i + 1}/{len(chunks)} {chunk}")
+          PY
