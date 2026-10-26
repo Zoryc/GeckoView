@@ -33,6 +33,8 @@ import app.snapcast.core.util.UrlUtils
  *   DOM URLs that look like segments are not.
  * - Network reports for redirects (301/302/303/307/308) and failed responses (status >= 400) are ignored:
  *   the redirect target is reported on its own, and a failed URL cannot be played.
+ * - LL-HLS delivery directives (`_HLS_msn`, `_HLS_part`, `_HLS_skip`, ...) are removed from reported URLs, so the
+ *   reloads of a low-latency live playlist merge into (or fold like) the plain playlist URL.
  * - Network request headers win over headers derived from a DOM report; a DOM report without a Referer
  *   uses its frame (or page) URL.
  * - Titles and posters taken from the media element are preferred over the page title / og:image fallbacks.
@@ -92,7 +94,9 @@ class VideoCollector(
      * (not media, a segment, a folded variant, a blob DOM source, a subtitle).
      */
     fun add(report: MediaReport): DetectedVideo? {
-        val url = report.url.trim()
+        // LL-HLS reloads carry _HLS_msn/_HLS_part/_HLS_skip; store the plain playlist URL so a cast or
+        // inspection never replays a stale blocking-reload request.
+        val url = report.url.trim().let(UrlUtils::withoutHlsDirectives)
         val isDom = report.source.trim().equals(SOURCE_DOM, ignoreCase = true)
         if (currentPageUrl == null) currentPageUrl = report.pageUrl.clean()
         collectTracks(report)

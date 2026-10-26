@@ -16,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Headers replayed upstream for one registration. The captured headers (Referer, User-Agent, Origin, extras)
  * go to every host; the Cookie header only to the original host, and per-host cookies only to their host.
+ * Authorization, like Cookie, goes only to the original host (and never after a redirect to another host), so a
+ * playlist naming segments, keys or ads on third-party hosts does not hand them the site's credentials.
  */
 internal class HeaderPolicy(
     headers: Map<String, String>,
@@ -26,6 +28,7 @@ internal class HeaderPolicy(
     private val replayed: List<Pair<String, String>>
     private val originHost: String? = originalUrl.toHttpUrlOrNull()?.host?.let(::normalizeHost)
     private val cookie: String?
+    private val authorization: String?
     private val cookiesByHost: Map<String, String> = cookiesByHost
         .filterValues { it.isNotBlank() }
         .mapKeys { normalizeHost(it.key) }
@@ -33,12 +36,14 @@ internal class HeaderPolicy(
     init {
         var userAgent: String? = null
         var capturedCookie: String? = null
+        var capturedAuthorization: String? = null
         val kept = ArrayList<Pair<String, String>>()
         for ((name, value) in headers) {
             val lower = name.trim().lowercase(Locale.ROOT)
             when {
                 value.isBlank() -> Unit
                 lower == "cookie" -> capturedCookie = value
+                lower == "authorization" -> capturedAuthorization = value
                 lower == "user-agent" -> userAgent = value
                 lower in NOT_REPLAYED -> Unit
                 else -> kept += name.trim() to value
@@ -47,6 +52,7 @@ internal class HeaderPolicy(
         (userAgent ?: defaultUserAgent?.takeIf { it.isNotBlank() })?.let { kept += "User-Agent" to it }
         replayed = kept
         cookie = capturedCookie
+        authorization = capturedAuthorization
     }
 
     /** Cookie header for a request to [host], or null when none may be sent there. */
@@ -56,14 +62,15 @@ internal class HeaderPolicy(
     }
 
     /**
-     * Request headers for [url]. [dropAuthorization] is set after a redirect to another host, mirroring
-     * what browsers and OkHttp do with credentials.
+     * Request headers for [url]. Authorization is only sent to the original host; [dropAuthorization] is set
+     * after a redirect to another host (even one leading back to the original host), mirroring what browsers and
+     * OkHttp do with credentials.
      */
     fun headersFor(url: HttpUrl, dropAuthorization: Boolean): Headers {
         val builder = Headers.Builder()
-        for ((name, value) in replayed) {
-            if (dropAuthorization && name.equals("Authorization", ignoreCase = true)) continue
-            addLenient(builder, name, value)
+        for ((name, value) in replayed) addLenient(builder, name, value)
+        if (!dropAuthorization && authorization != null && normalizeHost(url.host) == originHost) {
+            addLenient(builder, "Authorization", authorization)
         }
         cookieFor(url.host)?.let { addLenient(builder, "Cookie", it) }
         return builder.build()

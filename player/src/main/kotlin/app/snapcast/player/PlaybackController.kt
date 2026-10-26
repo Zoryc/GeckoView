@@ -166,9 +166,13 @@ internal class PlaybackController(
         _state.update { it.copy(resumedAtMs = null) }
     }
 
-    /** Hands the current position to the store (on-demand media with a known duration only). */
+    /**
+     * Hands the current position to the store (on-demand media with a known duration only). Nothing is
+     * written for a private-tab request or while "Resume playback" is off.
+     */
     fun savePosition() {
         val request = request ?: return
+        if (!StartPosition.mayStore(resumeEnabled(), request.isPrivate)) return
         val player = _player.value ?: return
         if (player.currentMediaItem == null || player.playbackState == Player.STATE_ENDED) return
         val duration = player.duration

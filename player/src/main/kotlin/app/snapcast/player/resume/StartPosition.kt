@@ -32,5 +32,11 @@ internal data class StartPosition(val positionMs: Long?, val resumed: Boolean) {
          * duration is known. (Media3 reports an unknown duration as a negative value.)
          */
         fun isPersistable(durationMs: Long, isLive: Boolean): Boolean = !isLive && durationMs > 0
+
+        /**
+         * True when positions may be written at all: "Resume playback" is on and the media does not come
+         * from a private tab (the rule of the cast module's ResumePolicy.shouldSave).
+         */
+        fun mayStore(resumeEnabled: Boolean, isPrivate: Boolean): Boolean = resumeEnabled && !isPrivate
     }
 }

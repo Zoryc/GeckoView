@@ -135,6 +135,38 @@ class UrlUtilsTest {
     }
 
     @Test
+    fun `normalizeForDedupe drops LL-HLS delivery directives`() {
+        assertThat(UrlUtils.normalizeForDedupe("https://e.com/720p.m3u8?_HLS_msn=12&_HLS_part=2&_HLS_skip=YES&x=1"))
+            .isEqualTo("https://e.com/720p.m3u8?x=1")
+        assertThat(UrlUtils.normalizeForDedupe("https://e.com/720p.m3u8?_hls_msn=1&_HLS_Future=v2"))
+            .isEqualTo("https://e.com/720p.m3u8")
+        assertThat(UrlUtils.stableId("https://e.com/720p.m3u8?_HLS_msn=1234&_HLS_part=2"))
+            .isEqualTo(UrlUtils.stableId("https://e.com/720p.m3u8"))
+        // Only the reserved prefix is dropped.
+        assertThat(UrlUtils.normalizeForDedupe("https://e.com/v.m3u8?hls_msn=1&x_HLS_part=2"))
+            .isEqualTo("https://e.com/v.m3u8?hls_msn=1&x_HLS_part=2")
+    }
+
+    @Test
+    fun `withoutHlsDirectives removes only the directives and keeps the rest byte for byte`() {
+        assertThat(UrlUtils.withoutHlsDirectives("https://e.com/720p.m3u8?_HLS_msn=1234&_HLS_part=2"))
+            .isEqualTo("https://e.com/720p.m3u8")
+        assertThat(UrlUtils.withoutHlsDirectives("HTTPS://E.com:443/a/720p.m3u8?tok=A%2Fb&_HLS_msn=5&_=9&_hls_skip=v2#f"))
+            .isEqualTo("HTTPS://E.com:443/a/720p.m3u8?tok=A%2Fb&_=9#f")
+        assertThat(UrlUtils.withoutHlsDirectives("https://e.com/v.m3u8?_HLS_part=1#frag")).isEqualTo("https://e.com/v.m3u8#frag")
+        assertThat(UrlUtils.withoutHlsDirectives("https://e.com/v.m3u8?_HLS_msn=1&")).isEqualTo("https://e.com/v.m3u8")
+        val untouched = listOf(
+            "https://e.com/v.m3u8",
+            "https://e.com/v.m3u8?",
+            "https://e.com/v.m3u8?a=1&&b=2",
+            "https://e.com/v.m3u8?x=1#_HLS_msn=2",
+            "https://e.com/v.m3u8?hls_msn=1",
+            "blob:https://e.com/uuid",
+        )
+        for (url in untouched) assertThat(UrlUtils.withoutHlsDirectives(url)).isEqualTo(url)
+    }
+
+    @Test
     fun `normalizeForDedupe treats empty path as root`() {
         assertThat(UrlUtils.normalizeForDedupe("https://Example.com")).isEqualTo("https://example.com/")
         assertThat(UrlUtils.normalizeForDedupe("https://example.com/?")).isEqualTo("https://example.com/")

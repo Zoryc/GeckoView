@@ -1,6 +1,7 @@
 package app.snapcast.browser.tabs
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -183,7 +184,9 @@ internal class TabManager @Inject constructor(
         when {
             entry.pendingRestore != null -> Unit
             entry.sessionCanGoBack -> entry.session.goBack()
-            entry.openedFromHome && !entry.isShowingHome -> showHome(entry)
+            // The page is the first history entry: the home page replaces it, so Back on the home
+            // page cannot return to it (which would otherwise alternate between the two forever).
+            entry.openedFromHome && !entry.isShowingHome -> showHome(entry, replaceHistory = true)
             parentId != null && entries.containsKey(parentId) -> closeTab(tabId)
         }
     }
@@ -290,6 +293,9 @@ internal class TabManager @Inject constructor(
             }
             return
         }
+        // A page replaced the home page (also an extension's tabs.update, which GeckoView navigates
+        // by itself): Back returns home. Back from the tab's first page replaces that page with the
+        // home entry (see goBack), so this cannot bounce between the two.
         if (tab.isShowingHome) tab.openedFromHome = true
         tab.pendingHomeLoad = null
         val newDocument = tab.awaitingCommit
@@ -346,10 +352,15 @@ internal class TabManager @Inject constructor(
         hooks.notify { it.onSessionCreated(tab.id, fresh, tab.isPrivate) }
         update(tab) { it.copy(isLoading = false, progress = 0, canGoForward = false, isFullscreen = false, isMediaPlaying = false) }
 
+        val now = SystemClock.elapsedRealtime()
+        val mayAutoRestore = CrashRecovery.mayAutoRestore(tab.lastCrashAt, now)
+        tab.lastCrashAt = now
         val saved = snapshotOf(tab, selected = false)
         if (isSelected(tab)) {
             activate(tab)
-            applyRestore(tab, saved)
+            // A page that crashes again right after being restored would reload forever: it stays
+            // dormant (URL and title kept) until the user reloads or reselects the tab.
+            if (mayAutoRestore) applyRestore(tab, saved) else tab.pendingRestore = saved
         } else {
             fresh.setActive(false)
             tab.pendingRestore = saved
@@ -407,13 +418,18 @@ internal class TabManager @Inject constructor(
         }
     }
 
-    private fun showHome(entry: TabEntry) {
+    /** @param replaceHistory the home entry replaces the current history entry instead of following it */
+    private fun showHome(entry: TabEntry, replaceHistory: Boolean = false) {
         entry.homeCapable = true
         entry.openedFromHome = false
         entry.pendingHomeLoad = null
         entry.pendingRestore = null
         showHomeState(entry)
-        entry.session.loadUri(ABOUT_BLANK)
+        if (replaceHistory) {
+            entry.session.load(GeckoSession.Loader().uri(ABOUT_BLANK).flags(GeckoSession.LOAD_FLAGS_REPLACE_HISTORY))
+        } else {
+            entry.session.loadUri(ABOUT_BLANK)
+        }
     }
 
     private fun showHomeState(entry: TabEntry) {

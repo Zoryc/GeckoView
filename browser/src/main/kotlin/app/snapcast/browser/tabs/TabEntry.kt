@@ -41,6 +41,9 @@ internal class TabEntry(
     /** Saved state not loaded yet: restored tabs load lazily when first selected. */
     var pendingRestore: SavedTab? = null
 
+    /** `SystemClock.elapsedRealtime()` of the last content crash or kill, to stop crash-reload loops. */
+    var lastCrashAt: Long? = null
+
     val isShowingHome: Boolean get() = state.isHome
 
     /**

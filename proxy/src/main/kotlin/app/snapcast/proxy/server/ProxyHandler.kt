@@ -121,17 +121,31 @@ internal class ProxyHandler(
 
     /**
      * Resolves a decoded [rest] (re-encoded first) against [base]. The reference is forced to be a relative path
-     * ("./" prefix) and the result must keep the base's origin, so a signed base cannot be turned into a relay
-     * for other hosts.
+     * ("./" prefix), may not contain dot-segments, and the result must stay under the base's directory (on its
+     * origin), so a signed base can neither be turned into a relay for other hosts nor for other paths of its
+     * host, which receive the user's cookies.
      */
     private fun resolveUnder(base: String, rest: String, rawQuery: String?): String? {
+        if (hasDotSegment(rest)) return null
         val reference = "./" + PathCodec.encodePath(rest) + (rawQuery?.let { "?$it" } ?: "")
         val resolved = UrlUtils.resolve(base, reference)
         val baseUrl = base.toHttpUrlOrNull() ?: return null
         val target = resolved.toHttpUrlOrNull() ?: return null
         val sameOrigin = target.scheme == baseUrl.scheme && target.host == baseUrl.host && target.port == baseUrl.port
-        return resolved.takeIf { sameOrigin }
+        // Defense in depth: both paths are OkHttp-canonical, and the target's is exactly what is fetched.
+        val baseDir = baseUrl.encodedPath.substringBeforeLast('/') + "/"
+        val underBase = target.encodedPath.startsWith(baseDir)
+        return resolved.takeIf { sameOrigin && underBase }
     }
+
+    /**
+     * True when the decoded [rest] has a "." or ".." segment. NanoHTTPD decodes the path, so "%2E%2E" shows up here
+     * as ".."; receivers remove dot-segments before sending and rewritten references never contain them, so only
+     * a hand-crafted request does, to climb out of the signed directory. '\' also separates segments and a
+     * ";params" suffix is ignored, as some upstream servers treat "..\" and "..;" like "../".
+     */
+    private fun hasDotSegment(rest: String): Boolean =
+        rest.split('/', '\\').any { segment -> segment.substringBefore(';').let { it == "." || it == ".." } }
 
     /** A remote resource of a registered stream: its main URL or a sub-resource. */
     private class Target(val id: String, val stream: Registration.Stream, val url: String, val main: Boolean) {

@@ -4,8 +4,18 @@ import java.security.MessageDigest
 
 /** URL helpers that work on plain strings (no android.net.Uri) so they are JVM-testable. */
 object UrlUtils {
-    /** Query parameters that only select a byte range or defeat caches; dropped by [normalizeForDedupe]. */
+    /**
+     * Query parameters that only select a byte range or defeat caches; dropped by [normalizeForDedupe].
+     * LL-HLS delivery directives (any parameter starting with [HLS_DIRECTIVE_PREFIX]) are dropped as well.
+     */
     private val VOLATILE_PARAMS = setOf("range", "bytestart", "byteend", "rbuf", "rn", "_")
+
+    /**
+     * Prefix that RFC 8216bis (section 6.2.5) reserves for Low-Latency HLS delivery directives such as
+     * `_HLS_msn`, `_HLS_part` and `_HLS_skip`. Players add them to every blocking playlist reload; they
+     * never select a different resource. Matched case-insensitively.
+     */
+    private const val HLS_DIRECTIVE_PREFIX = "_hls_"
 
     /** Cache-buster parameters dropped only when their value is purely numeric (timestamps, counters). */
     private val NUMERIC_CACHE_BUSTERS = setOf("t", "ts", "cb")
@@ -61,8 +71,10 @@ object UrlUtils {
      * Canonical form used for de-duplication: drops the fragment and volatile byte-range / cache-busting
      * query parameters (range, bytestart, byteend, _, t when numeric-only cache busters), lower-cases scheme and host.
      *
-     * Also drops default ports (80 for http, 443 for https), the rbuf/rn parameters and numeric ts/cb
-     * parameters, and uses "/" for an empty http(s) path. The order of the remaining parameters is kept.
+     * Also drops default ports (80 for http, 443 for https), the rbuf/rn parameters, numeric ts/cb
+     * parameters and LL-HLS delivery directives (`_HLS_msn`, `_HLS_part`, `_HLS_skip` and any other
+     * `_HLS_*` parameter, case-insensitive), and uses "/" for an empty http(s) path. The order of the
+     * remaining parameters is kept.
      */
     fun normalizeForDedupe(url: String): String {
         val ref = UriReference.parse(url.trim())
@@ -90,14 +102,38 @@ object UrlUtils {
             if (param.isEmpty()) return@filter false
             val name = param.substringBefore('=').lowercase()
             val value = param.substringAfter('=', "")
-            when (name) {
-                in VOLATILE_PARAMS -> false
-                in NUMERIC_CACHE_BUSTERS -> !DIGITS.matches(value)
+            when {
+                name in VOLATILE_PARAMS -> false
+                name.startsWith(HLS_DIRECTIVE_PREFIX) -> false
+                name in NUMERIC_CACHE_BUSTERS -> !DIGITS.matches(value)
                 else -> true
             }
         }
         return if (kept.isEmpty()) null else kept.joinToString("&")
     }
+
+    /**
+     * [url] without its LL-HLS delivery directives (query parameters whose name starts with `_HLS_`,
+     * case-insensitive), so a stored playlist URL never replays a stale blocking-reload request.
+     * Drops the `?` when no parameter is left. Everything else, including the order and spelling of
+     * the other parameters and the fragment, is kept byte for byte; a URL without directives is
+     * returned unchanged.
+     */
+    fun withoutHlsDirectives(url: String): String {
+        val hash = url.indexOf('#')
+        val beforeFragment = if (hash < 0) url else url.substring(0, hash)
+        val question = beforeFragment.indexOf('?')
+        if (question < 0) return url
+        val params = beforeFragment.substring(question + 1).split('&')
+        if (params.none(::isHlsDirective)) return url
+        val kept = params.filterNot(::isHlsDirective)
+        val fragment = if (hash < 0) "" else url.substring(hash)
+        val base = beforeFragment.substring(0, question)
+        return if (kept.all { it.isEmpty() }) base + fragment else base + "?" + kept.joinToString("&") + fragment
+    }
+
+    private fun isHlsDirective(param: String): Boolean =
+        param.substringBefore('=').startsWith(HLS_DIRECTIVE_PREFIX, ignoreCase = true)
 
     /** Short stable id (hex, 16 chars) derived from [normalizeForDedupe] of [url]. */
     fun stableId(url: String): String {

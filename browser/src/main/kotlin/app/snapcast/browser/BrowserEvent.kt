@@ -15,8 +15,8 @@ sealed interface BrowserEvent {
 
     /**
      * The tab's content process crashed or was killed. The tab keeps its id but gets a fresh
-     * session (reloaded now if selected, otherwise when next selected): re-attach
-     * [BrowserTabs.session] to the GeckoView.
+     * session (reloaded now if selected, unless it crashed again within 30 s; otherwise when next
+     * selected or reloaded): re-attach [BrowserTabs.session] to the GeckoView.
      */
     data class TabCrashed(val tabId: String) : BrowserEvent
 

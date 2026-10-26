@@ -16,6 +16,7 @@ class PlaybackRequestCodecTest {
             type = StreamType.HLS,
             mimeType = "application/vnd.apple.mpegurl",
             headers = mapOf("Referer" to "https://site.example/", "Cookie" to "a=1; b=2"),
+            cookiesByHost = mapOf("seg.cdn.example" to "edge=1"),
             subtitles = listOf(
                 SubtitleTrack(id = "s1", url = "https://cdn.example/en.vtt", label = "English", language = "en", format = SubtitleFormat.VTT),
                 SubtitleTrack(id = "s2", url = "content://picker/7", format = SubtitleFormat.SRT, isLocal = true),
@@ -23,6 +24,7 @@ class PlaybackRequestCodecTest {
             posterUrl = "https://cdn.example/poster.jpg",
             startPositionMs = 12_345L,
             pageUrl = "https://site.example/watch/1",
+            isPrivate = true,
         )
 
         assertThat(PlaybackRequestCodec.decode(PlaybackRequestCodec.encode(request))).isEqualTo(request)

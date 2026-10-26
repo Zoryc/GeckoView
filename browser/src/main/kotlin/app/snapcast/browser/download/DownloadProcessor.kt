@@ -104,7 +104,12 @@ internal class DownloadProcessor @Inject constructor(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Download of ${request.fileName} failed", e)
-            withContext(NonCancellable + Dispatchers.IO) { target?.abort() }
+            withContext(NonCancellable + Dispatchers.IO) {
+                target?.abort()
+                // The target may have failed before body.use {} started: the response must still be
+                // closed, or its Gecko channel keeps the connection open (closing twice is harmless).
+                runCatching { request.response.body?.close() }
+            }
             val reason = context.getString(R.string.browser_download_error_io)
             notifications.showFailed(request, reason)
             events.emit(BrowserEvent.DownloadFailed(request.fileName, reason))

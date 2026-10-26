@@ -9,6 +9,7 @@ import org.junit.Test
 import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.net.Socket
 import kotlin.test.assertFailsWith
 
 /** Routing, signatures, CORS and server lifecycle. */
@@ -109,6 +110,30 @@ class StreamProxyRoutesTest {
             assertThat(response.text).isEqualTo("missing")
         }
         assertThat(origin.requests.map { it.url.encodedPath }.filter { it.contains("evil") }).hasSize(2)
+    }
+
+    @Test
+    fun `base routes cannot climb out of the signed directory`() {
+        val signed = signedBasePath("http://origin.test:${origin.port}/dash/")
+        origin.text("/dash/seg-1.m4s", "segment", "video/iso.segment")
+        origin.text("/secret", "secret", "text/plain")
+        origin.text("/dash/sub/seg-2.m4s", "nested", "video/iso.segment")
+
+        // Templates keep working, nested directories included.
+        assertThat(harness.fetch(signed + "seg-1.m4s").text).isEqualTo("segment")
+        assertThat(harness.fetch(signed + "sub/seg-2.m4s").text).isEqualTo("nested")
+        // Sent raw: OkHttp (and every receiver) removes "..", "%2E%2E" and "." segments before sending.
+        listOf("%2E%2E/secret", "../secret", "sub/../../secret", "%2e%2e%2fsecret", "..%5Csecret", "..;/secret", "./seg-1.m4s")
+            .forEach { rest -> assertThat(rawStatusLine(signed + rest)).contains(" 403 ") }
+        assertThat(origin.requests.none { it.url.encodedPath == "/secret" }).isTrue()
+    }
+
+    /** Sends a GET with [path] exactly as given (no client-side normalization) and returns the status line. */
+    private fun rawStatusLine(path: String): String = Socket("127.0.0.1", harness.proxy.port).use { socket ->
+        socket.soTimeout = 10_000
+        val request = "GET $path HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+        socket.getOutputStream().apply { write(request.toByteArray(Charsets.US_ASCII)); flush() }
+        socket.getInputStream().bufferedReader(Charsets.ISO_8859_1).readLine().orEmpty()
     }
 
     /** A signed base route, produced by rewriting a DASH manifest (the only producer of base routes). */

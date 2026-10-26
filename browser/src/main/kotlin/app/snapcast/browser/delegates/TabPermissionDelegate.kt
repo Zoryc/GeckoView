@@ -67,6 +67,9 @@ internal class TabPermissionDelegate(
                         if (allow && kind == BrowserPrompt.PermissionKind.NOTIFICATIONS) requestPostNotifications(tabId)
                     }
                 },
+                // Gecko stores the answer for the site: a prompt closed without a choice keeps
+                // "ask" (denied this time only) instead of a permanent block.
+                onDismiss = { answer { result.complete(ContentPermission.VALUE_PROMPT) } },
             ),
         )
         return result

@@ -52,4 +52,12 @@ class StartPositionTest {
         assertThat(StartPosition.isPersistable(durationMs = timeUnset, isLive = false)).isFalse()
         assertThat(StartPosition.isPersistable(durationMs = 0L, isLive = false)).isFalse()
     }
+
+    @Test
+    fun positionsAreStoredOnlyForNonPrivateMediaWhileResumeIsOn() {
+        assertThat(StartPosition.mayStore(resumeEnabled = true, isPrivate = false)).isTrue()
+        assertThat(StartPosition.mayStore(resumeEnabled = true, isPrivate = true)).isFalse()
+        assertThat(StartPosition.mayStore(resumeEnabled = false, isPrivate = false)).isFalse()
+        assertThat(StartPosition.mayStore(resumeEnabled = false, isPrivate = true)).isFalse()
+    }
 }

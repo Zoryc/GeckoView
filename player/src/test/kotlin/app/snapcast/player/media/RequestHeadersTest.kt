@@ -6,7 +6,7 @@ import org.junit.Test
 class RequestHeadersTest {
 
     @Test
-    fun userAgentIsSplitFromTheOtherHeaders() {
+    fun userAgentAndCookieAreSplitFromTheOtherHeaders() {
         val headers = RequestHeaders.from(
             mapOf(
                 "Referer" to "https://site.example/watch",
@@ -17,11 +17,22 @@ class RequestHeadersTest {
         )
 
         assertThat(headers.userAgent).isEqualTo("Mozilla/5.0 (Android 15; Mobile; rv:158.0) Gecko/158.0 Firefox/158.0")
+        assertThat(headers.cookie).isEqualTo("session=abc; consent=1")
         assertThat(headers.properties).containsExactly(
             "Referer", "https://site.example/watch",
-            "Cookie", "session=abc; consent=1",
             "Origin", "https://site.example",
         ).inOrder()
+    }
+
+    @Test
+    fun cookieNameIsMatchedCaseInsensitivelyAndNeverReplayedToEveryHost() {
+        val headers = RequestHeaders.from(
+            linkedMapOf("cookie" to "old=1", "COOKIE" to "session=abc", "Authorization" to "Bearer token"),
+        )
+
+        assertThat(headers.cookie).isEqualTo("session=abc")
+        assertThat(headers.properties.keys.map { it.lowercase() }).doesNotContain("cookie")
+        assertThat(headers.properties).containsExactly("Authorization", "Bearer token")
     }
 
     @Test
@@ -42,7 +53,8 @@ class RequestHeadersTest {
 
     @Test
     fun emptyInputGivesNothing() {
-        assertThat(RequestHeaders.from(emptyMap())).isEqualTo(RequestHeaders(userAgent = null, properties = emptyMap()))
+        assertThat(RequestHeaders.from(emptyMap()))
+            .isEqualTo(RequestHeaders(userAgent = null, properties = emptyMap(), cookie = null))
     }
 
     @Test
@@ -52,6 +64,7 @@ class RequestHeadersTest {
         )
 
         assertThat(headers.userAgent).isNull()
+        assertThat(headers.cookie).isNull()
         assertThat(headers.properties).containsExactly("Referer", "https://site.example/")
     }
 
@@ -86,6 +99,7 @@ class RequestHeadersTest {
         )
 
         assertThat(headers.userAgent).isNull()
+        assertThat(headers.cookie).isNull()
         assertThat(headers.properties).containsExactly("X-Tab", "a\tb")
     }
 
@@ -99,5 +113,32 @@ class RequestHeadersTest {
             "Referer", "https://new.example/",
             "Accept", "*/*",
         ).inOrder()
+    }
+
+    @Test
+    fun cookiesByHostAreNormalizedAndFiltered() {
+        val cookies = RequestHeaders.cookiesByHost(
+            linkedMapOf(
+                "CDN.Site.com." to " cdn=1 ",
+                "[::1]" to "local=1",
+                "blank.example" to "   ",
+                "bad.example" to "name=café",
+                "ctl.example" to "a\u0001b",
+                " " to "nohost=1",
+                "cdn.site.com" to "cdn=2",
+            ),
+        )
+
+        assertThat(cookies).containsExactly(
+            "cdn.site.com", "cdn=2",
+            "::1", "local=1",
+        ).inOrder()
+    }
+
+    @Test
+    fun hostsAreNormalizedLikeTheProxy() {
+        assertThat(RequestHeaders.normalizeHost(" WWW.Example.COM. ")).isEqualTo("www.example.com")
+        assertThat(RequestHeaders.normalizeHost("[2001:DB8::1]")).isEqualTo("2001:db8::1")
+        assertThat(RequestHeaders.normalizeHost("")).isEmpty()
     }
 }

@@ -36,6 +36,9 @@ internal interface TabHost {
 
     fun closeTab(tabId: String)
 
-    /** Replaces a crashed or killed session with a fresh one and reloads the tab. */
+    /**
+     * Replaces a crashed or killed session with a fresh one. The tab reloads now if selected (unless it
+     * crashed again within [CrashRecovery.RELOAD_WINDOW_MS]), otherwise when next selected.
+     */
     fun recoverSession(tab: TabEntry)
 }

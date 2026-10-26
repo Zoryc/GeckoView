@@ -23,7 +23,7 @@ internal class PromptRegistry @Inject constructor() {
         _prompts.update { list -> list.filterNot { it.id == id } }
     }
 
-    /** Denies the site-permission prompts of a tab that navigated to another site. */
+    /** Dismisses the site-permission prompts of a tab that navigated to another site. */
     fun dismissPermissionPrompts(tabId: String) {
         _prompts.value
             .filter { it.tabId == tabId && it.isPermissionRequest() }

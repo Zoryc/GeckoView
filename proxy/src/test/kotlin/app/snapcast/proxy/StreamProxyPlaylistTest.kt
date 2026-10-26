@@ -143,6 +143,26 @@ class StreamProxyPlaylistTest {
     }
 
     @Test
+    fun `authorization is only sent to the stream host`() {
+        origin.text(
+            "/a/list.m3u8",
+            "#EXTM3U\n#EXTINF:4,\nlocal.ts\n#EXTINF:4,\n${cdn.url("/a/remote.ts")}\n#EXT-X-ENDLIST\n",
+            "application/vnd.apple.mpegurl",
+        )
+        origin.text("/a/local.ts", "local", "video/mp2t")
+        cdn.text("/a/remote.ts", "remote", "video/mp2t")
+        val stream = register(origin.url("/a/list.m3u8"), headers = mapOf("Authorization" to "Bearer token", "Referer" to "https://page.example/"))
+
+        proxiedUris(harness.fetch(stream.path).text).forEach { assertThat(harness.fetch(it).code).isEqualTo(200) }
+
+        assertThat(origin.requestsTo("/a/list.m3u8").single().headers["Authorization"]).isEqualTo("Bearer token")
+        assertThat(origin.requestsTo("/a/local.ts").single().headers["Authorization"]).isEqualTo("Bearer token")
+        val remote = cdn.requestsTo("/a/remote.ts").single()
+        assertThat(remote.headers["Authorization"]).isNull()
+        assertThat(remote.headers["Referer"]).isEqualTo("https://page.example/")
+    }
+
+    @Test
     fun `playlists are recognised by sniffing when nothing else tells`() {
         origin.text("/api/get", "#EXTM3U\n#EXTINF:4,\nchunk-1\n#EXT-X-ENDLIST\n", "application/octet-stream")
         val stream = register(origin.url("/api/get?id=5"), typeHint = null)

@@ -302,6 +302,35 @@ class VideoCollectorTest {
     }
 
     @Test
+    fun `LL-HLS reloads of a folded variant stay folded`() {
+        val master = collector.add(network("https://cdn.example.com/hls/master.m3u8"))!!
+        collector.onMasterParsed(master.id, listOf("https://cdn.example.com/hls/720p.m3u8"))
+        val reload = network(
+            "https://cdn.example.com/hls/720p.m3u8?_HLS_msn=1234&_HLS_part=2",
+            mime = "application/vnd.apple.mpegurl",
+            resourceType = "xmlhttprequest",
+        )
+        assertThat(collector.add(reload)).isNull()
+        assertThat(collector.add(reload.copy(url = "https://cdn.example.com/hls/720p.m3u8?_HLS_msn=1235&_HLS_part=0&_HLS_skip=YES")))
+            .isNull()
+        assertThat(collector.videos).hasSize(1)
+    }
+
+    @Test
+    fun `LL-HLS reloads merge into one entry without delivery directives`() {
+        val first = collector.add(
+            network("https://cdn.example.com/live/720p.m3u8?token=abc&_HLS_msn=1234&_HLS_part=2", mime = "application/vnd.apple.mpegurl"),
+        )!!
+        val second = collector.add(
+            network("https://cdn.example.com/live/720p.m3u8?token=abc&_HLS_msn=1235&_HLS_part=0", mime = "application/vnd.apple.mpegurl"),
+        )!!
+        assertThat(second.id).isEqualTo(first.id)
+        assertThat(collector.videos).hasSize(1)
+        assertThat(collector.videos.single().url).isEqualTo("https://cdn.example.com/live/720p.m3u8?token=abc")
+        assertThat(collector.videos.single().id).isEqualTo(UrlUtils.stableId("https://cdn.example.com/live/720p.m3u8?token=abc"))
+    }
+
+    @Test
     fun `variants listed before the master is parsed are removed`() {
         val master = collector.add(network("https://cdn.example.com/hls/master.m3u8"))!!
         val v720 = collector.add(network("https://cdn.example.com/hls/720p.m3u8"))!!

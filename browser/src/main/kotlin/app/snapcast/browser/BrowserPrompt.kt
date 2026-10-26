@@ -164,15 +164,21 @@ sealed class BrowserPrompt {
 
     enum class PermissionKind { GEOLOCATION, NOTIFICATIONS, PERSISTENT_STORAGE, XR, AUTOPLAY, MEDIA_KEY_SYSTEM, STORAGE_ACCESS, LOCAL_NETWORK, OTHER }
 
-    /** Site permission (geolocation, notifications, ...). */
+    /**
+     * Site permission (geolocation, notifications, ...). [onResult] is an explicit Allow or Block, which
+     * the engine remembers for the site. A prompt closed without a choice (Back, tap outside, the tab
+     * navigated away or closed) must use [dismiss]: the request is denied this time only and the site
+     * may ask again.
+     */
     class ContentPermission(
         override val id: String,
         override val tabId: String?,
         val kind: PermissionKind,
         val origin: String,
         val onResult: (allow: Boolean) -> Unit,
+        val onDismiss: () -> Unit = { onResult(false) },
     ) : BrowserPrompt() {
-        override fun dismiss() = onResult(false)
+        override fun dismiss() = onDismiss()
     }
 
     data class MediaSourceInfo(val id: String, val name: String)
