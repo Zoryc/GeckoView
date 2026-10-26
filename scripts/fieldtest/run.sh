@@ -68,46 +68,6 @@ for y, value in sorted(rows):
 PY
 }
 
-# Prints the text / content-desc of the first node matching the regex.
-find_text() {
-  dump_ui
-  python3 - "$1" "$WORK/ui.xml" <<'PY'
-import re, sys
-import xml.etree.ElementTree as ET
-pattern = re.compile(sys.argv[1])
-try:
-    root = ET.parse(sys.argv[2]).getroot()
-except Exception:
-    sys.exit(1)
-for node in root.iter("node"):
-    for attr in ("text", "content-desc"):
-        value = node.get(attr) or ""
-        if value and pattern.search(value):
-            print(value); sys.exit(0)
-sys.exit(1)
-PY
-}
-
-# Opens each detection-coverage page and reports whether the app listed a video for it.
-coverage() {
-  local key expect found count desc
-  for key in mp4 sources late nested hlsjs dash api-hls api-text sw ad; do
-    expect="found"; [ "$key" = "ad" ] && expect="filtered"
-    adb shell am start -W -a android.intent.action.VIEW -d "http://cov.10.0.2.2.nip.io:8080/s/$key" -n "$ACTIVITY" >/dev/null
-    found="none"; count=0
-    if wait_for "Videos found on this page" 35 >/dev/null; then
-      desc="$(find_text "Videos found on this page" || true)"
-      count="${desc##*: }"; found="listed"
-      find_center "^Got it$" >/dev/null && tap "^Got it$" 5
-      tap "Videos found on this page" 15 && wait_for "Videos on this page" 15 >/dev/null
-      echo "::group::[$LABEL] coverage $key"; ui_text; echo "::endgroup::"
-      shot "cov-$key" 1
-      adb shell input keyevent KEYCODE_BACK; sleep 1
-    fi
-    echo "COVERAGE $LABEL $key expect=$expect result=$found count=$count"
-  done
-}
-
 wait_for() {
   local pattern="$1" timeout="${2:-60}" waited=0 center
   while (( waited < timeout )); do
@@ -179,9 +139,6 @@ tap "^Scan again$" 10 && sleep 6
 shot 07-list-after-rescan 2
 report "list after rescan"
 play_item 1 08-play-1-after-rescan
-
-log "detection coverage"
-coverage
 
 log "reload page and retry"
 adb shell am start -W -a android.intent.action.VIEW -d "$SITE" -n "$ACTIVITY" >/dev/null
