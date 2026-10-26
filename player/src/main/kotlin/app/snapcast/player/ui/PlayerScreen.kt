@@ -87,6 +87,7 @@ internal interface PlayerScreenActions {
     fun onStartOver()
     fun onDismissResumeNotice()
     fun onRetry()
+    fun onReloadPage()
 }
 
 /**
@@ -147,6 +148,7 @@ internal fun PlayerScreen(
                         error = error,
                         compact = chrome.isInPictureInPicture,
                         onRetry = actions::onRetry,
+                        onReloadPage = actions::onReloadPage,
                         onClose = actions::onBack,
                     )
                 }
@@ -276,6 +278,7 @@ private fun ErrorOverlay(
     error: PlayerErrorUi,
     compact: Boolean,
     onRetry: () -> Unit,
+    onReloadPage: () -> Unit,
     onClose: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -316,7 +319,16 @@ private fun ErrorOverlay(
                     OutlinedButton(onClick = onClose) {
                         Text(stringResource(R.string.player_close))
                     }
-                    if (error.canRetry) {
+                    if (error.canReloadPage) {
+                        if (error.canRetry) {
+                            OutlinedButton(onClick = onRetry) {
+                                Text(stringResource(R.string.player_retry))
+                            }
+                        }
+                        Button(onClick = onReloadPage) {
+                            Text(stringResource(R.string.player_reload_page))
+                        }
+                    } else if (error.canRetry) {
                         Button(onClick = onRetry) {
                             Text(stringResource(R.string.player_retry))
                         }

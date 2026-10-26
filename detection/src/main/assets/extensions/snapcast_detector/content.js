@@ -3,7 +3,12 @@
  *
  * Every frame scans its <video> elements (their <source> and <track> children included), again when
  * nodes are added or src/poster attributes change (MutationObserver) and when media events fire, and
- * reports http(s) sources as MediaReports (see app.snapcast.core.detection.DetectorProtocol).
+ * reports http(s) sources as MediaReports (see app.snapcast.core.detection.DetectorProtocol). A report
+ * carries the Referer the page would send for that source (its referrer policy applied) and the poster
+ * the player shows, even when a player library draws it in a layer of its own instead of `poster`.
+ *
+ * While the app's video list is open it asks for frame thumbnails: every frame then draws each loaded
+ * video once into a small canvas and reports it (never before, so pages pay nothing for it otherwise).
  *
  * Only the top frame talks to the app: it opens runtime.connectNative("snapcast"), says hello, sends
  * page metadata and its own findings, and relays what the background page delivers (network finds and
@@ -29,6 +34,22 @@
   const HELLO_RETRIES = 4;
   /** A frame stops reporting new URLs past this many (pathological pages). */
   const MAX_REPORTED_URLS = 300;
+  const DEFAULT_REFERRER_POLICY = 'strict-origin-when-cross-origin';
+  const REFERRER_POLICIES = new Set([
+    'no-referrer', 'no-referrer-when-downgrade', 'origin', 'origin-when-cross-origin', 'same-origin',
+    'strict-origin', 'strict-origin-when-cross-origin', 'unsafe-url',
+  ]);
+  /** Attributes player libraries put a poster URL in (on the <video> or its container). */
+  const POSTER_ATTRIBUTES = ['data-poster', 'data-poster-url', 'data-thumbnail', 'data-thumb'];
+  /** Layers player libraries draw a poster with (video.js, Plyr, ArtPlayer, Clappr, JW Player, Flowplayer...). */
+  const POSTER_LAYERS = '[class*="poster" i], [class*="thumbnail" i], .jw-preview, .fp-splash';
+  /** How many ancestors of a <video> are searched for a poster, and how many layers per ancestor. */
+  const POSTER_SEARCH_DEPTH = 4;
+  const POSTER_MAX_LAYERS = 6;
+  /** A poster layer must cover at least this share of the player, so a related video's thumbnail is never taken. */
+  const POSTER_MIN_COVER = 0.5;
+  const THUMBNAIL_WIDTH = 320;
+  const THUMBNAIL_QUALITY = 0.7;
 
   function noop() {}
 
@@ -80,6 +101,138 @@
 
   function httpOnly(url) {
     return C.isHttpUrl(url) ? url : undefined;
+  }
+
+  /** The document's referrer policy: the last valid token of its <meta name="referrer"> tags, else the default. */
+  function referrerPolicyOf(doc) {
+    let policy = DEFAULT_REFERRER_POLICY;
+    const metas = queryAll(doc, 'meta[name="referrer" i]');
+    for (let i = 0; i < metas.length; i++) {
+      for (const token of String(attribute(metas[i], 'content') || '').toLowerCase().split(',')) {
+        if (REFERRER_POLICIES.has(token.trim())) policy = token.trim();
+      }
+    }
+    return policy;
+  }
+
+  /** The Referer a document at [documentUrl] sends for [targetUrl] under [policy]; undefined for none. */
+  function referrerFor(documentUrl, targetUrl, policy) {
+    let from;
+    let to;
+    try {
+      from = new URL(documentUrl);
+      to = new URL(targetUrl);
+    } catch (ignored) {
+      return undefined;
+    }
+    if (!/^https?:$/.test(from.protocol)) return undefined;
+    from.username = '';
+    from.password = '';
+    from.hash = '';
+    const full = from.href;
+    const origin = `${from.origin}/`;
+    const sameOrigin = from.origin === to.origin;
+    const downgrade = from.protocol === 'https:' && to.protocol === 'http:';
+    switch (policy) {
+      case 'no-referrer': return undefined;
+      case 'unsafe-url': return full;
+      case 'origin': return origin;
+      case 'same-origin': return sameOrigin ? full : undefined;
+      case 'strict-origin': return downgrade ? undefined : origin;
+      case 'origin-when-cross-origin': return sameOrigin ? full : origin;
+      case 'no-referrer-when-downgrade': return downgrade ? undefined : full;
+      default: return downgrade ? undefined : (sameOrigin ? full : origin);
+    }
+  }
+
+  function baseUrlOf(node) {
+    try {
+      return node.ownerDocument && node.ownerDocument.baseURI ? node.ownerDocument.baseURI : undefined;
+    } catch (ignored) {
+      return undefined;
+    }
+  }
+
+  function cssUrl(value) {
+    const match = /url\(\s*(['"]?)(.*?)\1\s*\)/i.exec(value || '');
+    return match ? match[2] : undefined;
+  }
+
+  /** True when an RGBA pixel buffer is (nearly) black: a video that has not painted a real frame yet. */
+  function isDark(pixels) {
+    let sum = 0;
+    let count = 0;
+    const step = Math.max(4, Math.floor(pixels.length / 4 / 256) * 4);
+    for (let i = 0; i + 2 < pixels.length; i += step) {
+      sum += pixels[i] + pixels[i + 1] + pixels[i + 2];
+      count += 3;
+    }
+    return count === 0 || sum / count < 12;
+  }
+
+  function rectOf(node) {
+    try {
+      const rect = typeof node.getBoundingClientRect === 'function' ? node.getBoundingClientRect() : null;
+      return rect && rect.width > 0 && rect.height > 0 ? rect : null;
+    } catch (ignored) {
+      return null;
+    }
+  }
+
+  /** True when [layer] covers at least POSTER_MIN_COVER of [player] on screen (unknown sizes count as covering). */
+  function covers(layer, player) {
+    const a = rectOf(layer);
+    if (!a || !player) return true;
+    const width = Math.min(a.right, player.right) - Math.max(a.left, player.left);
+    const height = Math.min(a.bottom, player.bottom) - Math.max(a.top, player.top);
+    return width > 0 && height > 0 && width * height >= POSTER_MIN_COVER * player.width * player.height;
+  }
+
+  /** The image an element shows: an <img>'s source, else its CSS background image or a lazy-loading attribute. */
+  function imageOf(node, base) {
+    if (nodeName(node) === 'IMG') {
+      return absolute(text(node.currentSrc) || text(node.src) || attribute(node, 'data-src'), base);
+    }
+    let background;
+    try {
+      const view = node.ownerDocument && node.ownerDocument.defaultView;
+      background = view ? cssUrl(view.getComputedStyle(node).backgroundImage) : undefined;
+    } catch (ignored) {
+      background = undefined;
+    }
+    return absolute(background || attribute(node, 'data-src') || attribute(node, 'data-bg'), base);
+  }
+
+  /**
+   * The poster a player shows for [element]: its poster attribute, else a poster attribute player libraries
+   * use (data-poster...) on it or a container, else the image of a poster layer drawn over the player (only a
+   * layer covering most of the player counts, so thumbnails of other videos nearby are never taken).
+   */
+  function posterOf(element) {
+    const own = httpOnly(text(element.poster));
+    if (own) return own;
+    const base = baseUrlOf(element);
+    let player = rectOf(element);
+    let node = element;
+    for (let depth = 0; node && depth <= POSTER_SEARCH_DEPTH; depth++, node = node.parentElement) {
+      const name = nodeName(node);
+      if (name === 'BODY' || name === 'HTML') break;
+      for (const attr of POSTER_ATTRIBUTES) {
+        const url = httpOnly(absolute(attribute(node, attr), base));
+        if (url) return url;
+      }
+      if (depth === 0) continue;
+      player = player || rectOf(node);
+      const layers = queryAll(node, POSTER_LAYERS);
+      for (let i = 0; i < layers.length && i < POSTER_MAX_LAYERS; i++) {
+        const layer = layers[i];
+        if (!covers(layer, player)) continue;
+        const image = nodeName(layer) === 'IMG' ? layer : (queryAll(layer, 'img')[0] || layer);
+        const url = httpOnly(imageOf(image, base));
+        if (url) return url;
+      }
+    }
+    return undefined;
   }
 
   /** Subtitle/caption <track> children of a media element as TrackReports (absolute http(s) URLs only). */
@@ -139,8 +292,8 @@
       duration: positive(element.duration),
       width: positiveInt(element.videoWidth),
       height: positiveInt(element.videoHeight),
-      poster: httpOnly(text(element.poster)),
-      requestHeaders: context.requestHeaders,
+      poster: posterOf(element),
+      thumbnail: context.thumbnail,
       tracks,
       timestamp: context.now(),
     };
@@ -149,7 +302,11 @@
       if (isBlobUrl(candidate.url)) {
         reports.push(C.compact(Object.assign({}, base, { url: candidate.url, isBlob: true })));
       } else if (C.isHttpUrl(candidate.url)) {
-        reports.push(C.compact(Object.assign({}, base, { url: candidate.url, mime: candidate.mime, isBlob: false })));
+        // The Referer the page itself sends for this source, following its referrer policy.
+        const requestHeaders = C.compact(Object.assign({}, context.requestHeaders, {
+          Referer: referrerFor(context.frameUrl, candidate.url, context.referrerPolicy),
+        }));
+        reports.push(C.compact(Object.assign({}, base, { url: candidate.url, mime: candidate.mime, isBlob: false, requestHeaders })));
       }
     }
     return reports;
@@ -189,6 +346,20 @@
       title: text(doc.title),
       ogTitle: metaContent(doc, ['og:title', 'twitter:title']),
       ogImage: httpOnly(absolute(metaContent(doc, ['og:image', 'og:image:url', 'twitter:image']), url)),
+    });
+  }
+
+  function withoutThumbnails(message) {
+    if (message.type !== 'media' || !Array.isArray(message.items) || !message.items.some((item) => item && item.thumbnail)) {
+      return message;
+    }
+    return Object.assign({}, message, {
+      items: message.items.map((item) => {
+        if (!item || !item.thumbnail) return item;
+        const copy = Object.assign({}, item);
+        delete copy.thumbnail;
+        return copy;
+      }),
     });
   }
 
@@ -298,7 +469,8 @@
         page = message;
         return;
       }
-      log.push(message);
+      // Frame thumbnails are sent once; replays (on every rescan) would only resend the same pictures.
+      log.push(withoutThumbnails(message));
       logItems += countItems(message);
       while (logItems > maxLogItems && log.length > 1) logItems -= countItems(log.shift());
     }
@@ -364,6 +536,8 @@
     let lastPage = null;
     let lastRescanAt = 0;
     let link = null;
+    /** Elements already drawn into a thumbnail (each is captured once). */
+    const captured = typeof WeakSet === 'function' ? new WeakSet() : new Set();
 
     function location() {
       try {
@@ -390,10 +564,8 @@
         pageUrl: isTop ? url : undefined,
         pageTitle: isTop ? title : undefined,
         frameTitle: title,
-        requestHeaders: C.compact({
-          Referer: C.isHttpUrl(url) ? C.stripFragment(url) : undefined,
-          'User-Agent': userAgent(),
-        }),
+        referrerPolicy: referrerPolicyOf(doc),
+        requestHeaders: C.compact({ 'User-Agent': userAgent() }),
         now,
       };
     }
@@ -462,6 +634,48 @@
       scanTimer = setTimer(scan, wait);
     }
 
+    /**
+     * One small JPEG of the current frame of [element], or undefined when it has nothing to show yet (no data,
+     * a black frame), is DRM-protected, or its pixels may not be read (cross-origin video without CORS).
+     */
+    function frameOf(element) {
+      if (!(element.readyState >= 2) || !(element.videoWidth > 0) || !(element.videoHeight > 0) || element.mediaKeys) return undefined;
+      try {
+        const width = THUMBNAIL_WIDTH;
+        const height = Math.max(1, Math.round((width * element.videoHeight) / element.videoWidth));
+        const canvas = doc.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        context.drawImage(element, 0, 0, width, height);
+        if (isDark(context.getImageData(0, 0, width, height).data)) return undefined;
+        captured.add(element);
+        return canvas.toDataURL('image/jpeg', THUMBNAIL_QUALITY);
+      } catch (ignored) {
+        // SecurityError (tainted canvas): this element can never be captured.
+        captured.add(element);
+        return undefined;
+      }
+    }
+
+    /** Captures every loaded <video> of this frame not captured yet and reports the pictures. */
+    function captureThumbnails() {
+      try {
+        const context = frameContext();
+        const videos = doc.getElementsByTagName('video');
+        const items = [];
+        for (let i = 0; i < videos.length; i++) {
+          if (captured.has(videos[i])) continue;
+          const thumbnail = frameOf(videos[i]);
+          if (!thumbnail) continue;
+          items.push(...elementReports(videos[i], Object.assign({}, context, { thumbnail })));
+        }
+        if (items.length > 0) emit({ type: 'media', items });
+      } catch (ignored) {
+        // Thumbnails are best effort.
+      }
+    }
+
     /** Forgets what was reported so the next scan reports every element again. */
     function rescan(fromBroadcast) {
       const time = now();
@@ -477,6 +691,11 @@
      * for a navigation that did not replace this document, such as a download link).
      */
     function onCommand(command, confirming) {
+      if (command.type === 'thumbnails') {
+        captureThumbnails();
+        sendToBackground({ kind: M.THUMBNAILS_ALL });
+        return;
+      }
       if (command.type !== 'rescan') return;
       if (!confirming) link.replay();
       rescan(false);
@@ -564,6 +783,7 @@
           return undefined;
         }
         if (message.kind === M.RESCAN) rescan(true);
+        if (message.kind === M.THUMBNAILS) captureThumbnails();
       } catch (ignored) {
         // Ignore malformed messages.
       }
@@ -602,7 +822,7 @@
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['src', 'poster'],
+        attributeFilter: ['src', 'poster', 'data-poster'],
       });
     } catch (ignored) {
       // Media events and load events still trigger scans.
@@ -637,6 +857,10 @@
     trackReports,
     sourceCandidates,
     reportSignature,
+    referrerFor,
+    referrerPolicyOf,
+    posterOf,
+    isDark,
     pageInfo,
     startContent,
     isBlobUrl,

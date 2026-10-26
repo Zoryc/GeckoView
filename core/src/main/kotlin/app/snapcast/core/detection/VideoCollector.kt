@@ -23,8 +23,8 @@ import app.snapcast.core.util.UrlUtils
  * - HLS media playlists whose URL is a variant (or rendition) of a known master in this tab are folded
  *   into that master instead of being listed; when a master arrives after its variants, the variants'
  *   entries are removed ([onMasterParsed]).
- * - DOM reports with blob: sources are not listed; their poster/duration/title enrich the most recent
- *   adaptive stream of the tab (or are kept pending until one arrives).
+ * - DOM reports with blob: sources are not listed; their poster/duration/title (not their size) enrich the
+ *   most recent adaptive stream of the tab (or are kept pending until one arrives).
  * - Subtitle reports and <track> elements are collected per tab and attached to every video's [DetectedVideo.subtitles].
  * - A tab-level DRM signal ([markDrm]) marks all current and future videos as DRM-protected.
  *
@@ -35,9 +35,13 @@ import app.snapcast.core.util.UrlUtils
  *   the redirect target is reported on its own, and a failed URL cannot be played.
  * - LL-HLS delivery directives (`_HLS_msn`, `_HLS_part`, `_HLS_skip`, ...) are removed from reported URLs, so the
  *   reloads of a low-latency live playlist merge into (or fold like) the plain playlist URL.
- * - Network request headers win over headers derived from a DOM report; a DOM report without a Referer
- *   uses its frame (or page) URL.
+ * - Headers captured on a network request are authoritative: once one arrived, DOM reports never change an
+ *   entry's headers, and the first network report replaces the DOM ones. A DOM report only carries the
+ *   Referer its page would send (the content script applies the page's referrer policy); none is invented.
+ * - Cookies seen anywhere in the tab ([MediaReport.cookiesByHost], newest value per host) are applied to every
+ *   entry, including entries only seen in the DOM and masters whose variants brought newer cookies.
  * - Titles and posters taken from the media element are preferred over the page title / og:image fallbacks.
+ *   Each poster keeps the Referer of the document that showed it ([DetectedVideo.posterReferer]).
  */
 class VideoCollector(
     val tabId: String,
@@ -54,28 +58,33 @@ class VideoCollector(
         var explicitPoster: Boolean,
     )
 
-    /** Metadata of a blob: (MediaSource) element, applied to the adaptive stream feeding it. */
+    /**
+     * Metadata of a blob: (MediaSource) element, applied to the adaptive stream feeding it. The element's
+     * size is left out: it is only the rendition the page player is decoding right now, not the stream's.
+     */
     private data class Enrichment(
         val title: String?,
         val posterUrl: String?,
+        val posterReferer: String?,
         val durationSec: Double?,
-        val width: Int?,
-        val height: Int?,
+        val thumbnail: String?,
     ) {
-        val isEmpty: Boolean get() = title == null && posterUrl == null && durationSec == null && width == null && height == null
+        val isEmpty: Boolean get() = title == null && posterUrl == null && durationSec == null && thumbnail == null
 
         /** This enrichment with values missing from it taken from [older]. */
         fun orElse(older: Enrichment): Enrichment = Enrichment(
             title = title ?: older.title,
             posterUrl = posterUrl ?: older.posterUrl,
+            posterReferer = if (posterUrl != null) posterReferer else older.posterReferer,
             durationSec = durationSec ?: older.durationSec,
-            width = width ?: older.width,
-            height = height ?: older.height,
+            thumbnail = thumbnail ?: older.thumbnail,
         )
     }
 
     private val entries = LinkedHashMap<String, Entry>()
     private val tabSubtitles = LinkedHashMap<String, SubtitleTrack>()
+    /** Newest Cookie header seen per host in this tab, most recently changed last. */
+    private val tabCookies = LinkedHashMap<String, String>()
     private val foldedIds = HashSet<String>()
     private var tabDrm: DrmInfo? = null
     private var pendingEnrichment: Enrichment? = null
@@ -99,6 +108,7 @@ class VideoCollector(
         val url = report.url.trim().let(UrlUtils::withoutHlsDirectives)
         val isDom = report.source.trim().equals(SOURCE_DOM, ignoreCase = true)
         if (currentPageUrl == null) currentPageUrl = report.pageUrl.clean()
+        collectCookies(report)
         collectTracks(report)
 
         if (isDom && (report.isBlob || url.startsWith("blob:", ignoreCase = true))) {
@@ -128,6 +138,7 @@ class VideoCollector(
         val reportTitle = report.title.clean()
         val reportPoster = report.poster.clean()
         val reportPageTitle = report.pageTitle.clean()
+        val poster = if (reportPoster != null) reportPoster to posterRefererOf(report, reportPoster) else pagePoster()
         val video = DetectedVideo(
             id = id,
             tabId = tabId,
@@ -137,13 +148,16 @@ class VideoCollector(
             pageUrl = report.pageUrl.clean() ?: currentPageUrl,
             pageTitle = reportPageTitle ?: pageTitle,
             title = reportTitle ?: ogTitle ?: reportPageTitle ?: pageTitle,
-            headers = headersOf(report, isDom),
-            cookiesByHost = report.cookiesByHost,
-            sizeBytes = report.size.positive(),
+            headers = headersOf(report),
+            cookiesByHost = report.cookiesByHost + tabCookies,
+            // A playlist's own length says nothing about the video.
+            sizeBytes = report.size.positive().takeUnless { type.isAdaptive },
             durationSec = report.duration.validDuration(),
             width = report.width.positive(),
             height = report.height.positive(),
-            posterUrl = reportPoster ?: ogImage,
+            posterUrl = poster?.first,
+            posterReferer = poster?.second,
+            frameThumbnail = report.thumbnail.validThumbnail(),
             subtitles = tabSubtitles.values.toList(),
             drm = tabDrm,
             source = if (isDom) DetectionSource.DOM else DetectionSource.NETWORK,
@@ -161,11 +175,12 @@ class VideoCollector(
 
     private fun merge(entry: Entry, type: StreamType, report: MediaReport, isDom: Boolean): DetectedVideo {
         val old = entry.video
-        val reportHeaders = headersOf(report, isDom)
-        val headers = if (entry.networkHeaders && isDom) {
-            old.headers.filledFrom(reportHeaders)
-        } else {
-            reportHeaders.filledFrom(old.headers)
+        val reportHeaders = headersOf(report)
+        val headers = when {
+            // What the browser really sent wins over what a DOM report says it would send.
+            isDom && entry.networkHeaders -> old.headers
+            !isDom && !entry.networkHeaders -> reportHeaders
+            else -> reportHeaders.filledFrom(old.headers)
         }
         if (!isDom) entry.networkHeaders = true
 
@@ -179,9 +194,11 @@ class VideoCollector(
         val reportPoster = report.poster.clean()
         val poster = if (reportPoster != null && !entry.explicitPoster) {
             entry.explicitPoster = true
-            reportPoster
+            reportPoster to posterRefererOf(report, reportPoster)
+        } else if (old.posterUrl != null) {
+            old.posterUrl to old.posterReferer
         } else {
-            old.posterUrl ?: ogImage
+            pagePoster()
         }
 
         val mergedType = if (old.type == StreamType.OTHER && type != StreamType.OTHER) type else old.type
@@ -194,12 +211,14 @@ class VideoCollector(
             pageTitle = old.pageTitle ?: report.pageTitle.clean() ?: pageTitle,
             title = title,
             headers = headers,
-            cookiesByHost = old.cookiesByHost + report.cookiesByHost,
-            sizeBytes = maxOfKnown(old.sizeBytes, report.size.positive()),
+            cookiesByHost = old.cookiesByHost + report.cookiesByHost + tabCookies,
+            sizeBytes = if (mergedType.isAdaptive) null else maxOfKnown(old.sizeBytes, report.size.positive()),
             durationSec = old.durationSec ?: report.duration.validDuration(),
             width = old.width ?: report.width.positive(),
             height = old.height ?: report.height.positive(),
-            posterUrl = poster,
+            posterUrl = poster?.first,
+            posterReferer = poster?.second,
+            frameThumbnail = old.frameThumbnail ?: report.thumbnail.validThumbnail(),
             subtitles = withTabSubtitles(old.subtitles),
             drm = old.drm ?: tabDrm,
             source = if (old.source == reportSource) old.source else DetectionSource.BOTH,
@@ -215,12 +234,15 @@ class VideoCollector(
         message.ogImage.clean()?.let { image ->
             ogImage = currentPageUrl?.takeIf(UrlUtils::isHttp)?.let { UrlUtils.resolve(it, image) } ?: image
         }
+        val pagePoster = pagePoster()
         for (entry in entries.values) {
             val video = entry.video
+            val usePagePoster = !entry.explicitPoster && pagePoster != null
             entry.video = video.copy(
                 pageTitle = video.pageTitle ?: pageTitle,
                 title = if (entry.explicitTitle) video.title else ogTitle ?: video.title ?: pageTitle,
-                posterUrl = if (entry.explicitPoster) video.posterUrl else ogImage ?: video.posterUrl,
+                posterUrl = if (usePagePoster) pagePoster?.first else video.posterUrl,
+                posterReferer = if (usePagePoster) pagePoster?.second else video.posterReferer,
             )
         }
     }
@@ -263,9 +285,9 @@ class VideoCollector(
         master.video = m.copy(
             title = if (takeTitle) v.title else m.title,
             posterUrl = if (takePoster) v.posterUrl else m.posterUrl,
+            posterReferer = if (takePoster) v.posterReferer else m.posterReferer,
             durationSec = m.durationSec ?: v.durationSec,
-            width = m.width ?: v.width,
-            height = m.height ?: v.height,
+            frameThumbnail = m.frameThumbnail ?: v.frameThumbnail,
         )
         if (takeTitle) master.explicitTitle = true
         if (takePoster) master.explicitPoster = true
@@ -297,6 +319,7 @@ class VideoCollector(
     fun reset(newPageUrl: String?) {
         entries.clear()
         tabSubtitles.clear()
+        tabCookies.clear()
         foldedIds.clear()
         tabDrm = null
         pendingEnrichment = null
@@ -342,12 +365,13 @@ class VideoCollector(
     }
 
     private fun enrichFromBlob(report: MediaReport) {
+        val poster = report.poster.clean()
         val enrichment = Enrichment(
             title = report.title.clean(),
-            posterUrl = report.poster.clean(),
+            posterUrl = poster,
+            posterReferer = poster?.let { posterRefererOf(report, it) },
             durationSec = report.duration.validDuration(),
-            width = report.width.positive(),
-            height = report.height.positive(),
+            thumbnail = report.thumbnail.validThumbnail(),
         )
         if (enrichment.isEmpty) return
         val target = entries.values.lastOrNull { it.video.type.isAdaptive }
@@ -366,12 +390,42 @@ class VideoCollector(
         entry.video = video.copy(
             title = if (takeTitle) enrichment.title else video.title,
             posterUrl = if (takePoster) enrichment.posterUrl else video.posterUrl,
+            posterReferer = if (takePoster) enrichment.posterReferer else video.posterReferer,
             durationSec = video.durationSec ?: enrichment.durationSec,
-            width = video.width ?: enrichment.width,
-            height = video.height ?: enrichment.height,
+            frameThumbnail = video.frameThumbnail ?: enrichment.thumbnail,
         )
         if (takeTitle) entry.explicitTitle = true
         if (takePoster) entry.explicitPoster = true
+    }
+
+    /** Records the tab's newest cookies per host and applies them to every entry when they changed. */
+    private fun collectCookies(report: MediaReport) {
+        var changed = false
+        for ((rawHost, rawValue) in report.cookiesByHost) {
+            val host = rawHost.trim().lowercase()
+            val value = rawValue.trim()
+            if (host.isEmpty() || value.isEmpty() || tabCookies[host] == value) continue
+            tabCookies.remove(host)
+            tabCookies[host] = value
+            changed = true
+        }
+        if (!changed) return
+        while (tabCookies.size > MAX_COOKIE_HOSTS) tabCookies.remove(tabCookies.keys.first())
+        for (entry in entries.values) {
+            entry.video = entry.video.copy(cookiesByHost = entry.video.cookiesByHost + tabCookies)
+        }
+    }
+
+    /** The page's og:image with the Referer the page would send for it, or null. */
+    private fun pagePoster(): Pair<String, String?>? {
+        val image = ogImage ?: return null
+        return image to currentPageUrl?.let { UrlUtils.referrerFor(it, image) }
+    }
+
+    /** Referer for a poster found in a report's document (the player's frame, else the page). */
+    private fun posterRefererOf(report: MediaReport, poster: String): String? {
+        val document = report.frameUrl.clean() ?: report.pageUrl.clean() ?: currentPageUrl ?: return null
+        return UrlUtils.referrerFor(document, poster)
     }
 
     /** [own] followed by the tab's subtitles it does not already contain. */
@@ -381,23 +435,20 @@ class VideoCollector(
         return own + tabSubtitles.values.filter { it.id !in ids }
     }
 
-    private fun headersOf(report: MediaReport, isDom: Boolean): MediaHeaders {
+    private fun headersOf(report: MediaReport): MediaHeaders {
         val byName = HashMap<String, String>()
         for ((name, value) in report.requestHeaders) {
             val v = value.trim()
             if (v.isNotEmpty()) byName[name.trim().lowercase()] = v
         }
-        val referer = byName["referer"] ?: if (isDom) {
-            listOfNotNull(report.frameUrl.clean(), report.pageUrl.clean(), currentPageUrl).firstOrNull(UrlUtils::isHttp)
-        } else {
-            null
-        }
         return MediaHeaders(
-            referer = referer,
+            referer = byName["referer"],
             userAgent = byName["user-agent"],
             origin = byName["origin"],
             cookie = byName["cookie"],
-            extra = byName["authorization"]?.let { mapOf("Authorization" to it) } ?: emptyMap(),
+            extra = buildMap {
+                for ((lower, name) in EXTRA_HEADERS) byName[lower]?.let { put(name, it) }
+            },
         )
     }
 
@@ -411,6 +462,12 @@ class VideoCollector(
 
     private companion object {
         const val SOURCE_DOM = "dom"
+        const val MAX_COOKIE_HOSTS = 64
+        /** Other captured headers replayed as sent: Authorization (origin host only), and content negotiation. */
+        val EXTRA_HEADERS = listOf("authorization" to "Authorization", "accept" to "Accept", "accept-language" to "Accept-Language")
+        const val THUMBNAIL_PREFIX = "data:image/jpeg;base64,"
+        /** About 150 KB of JPEG; a 320-pixel-wide capture is a tenth of that. */
+        const val MAX_THUMBNAIL_LENGTH = 200_000
         val TEXT_TRACK_KINDS = setOf("subtitles", "captions")
         val REDIRECT_STATUSES = setOf(301, 302, 303, 307, 308)
 
@@ -439,5 +496,9 @@ class VideoCollector(
         fun Int?.positive(): Int? = this?.takeIf { it > 0 }
 
         fun Double?.validDuration(): Double? = this?.takeIf { it.isFinite() && it > 0 }
+
+        /** A frame capture as the content script sends it: a JPEG data URL of bounded size. */
+        fun String?.validThumbnail(): String? =
+            this?.takeIf { it.startsWith(THUMBNAIL_PREFIX) && it.length in (THUMBNAIL_PREFIX.length + 1)..MAX_THUMBNAIL_LENGTH }
     }
 }

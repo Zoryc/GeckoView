@@ -3,6 +3,7 @@ package app.snapcast.player
 import android.content.Context
 import app.snapcast.core.model.StreamType
 import app.snapcast.core.model.SubtitleTrack
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
 
 /** Everything the built-in Media3 player needs to play a detected video on the phone. */
@@ -30,9 +31,25 @@ data class PlaybackRequest(
     val pageUrl: String? = null,
     /** From a private tab: the position is never written to the resume store. */
     val isPrivate: Boolean = false,
+    /** The quality picked in "Choose quality"; null lets the player adapt to the connection and screen. */
+    val quality: PlaybackQuality? = null,
+)
+
+/** One quality of an adaptive stream, as described by its playlist (any field may be unknown). */
+@Serializable
+data class PlaybackQuality(
+    val width: Int? = null,
+    val height: Int? = null,
+    val bandwidth: Long? = null,
 )
 
 /** Starts the full-screen player (supports picture-in-picture). Implemented in the player module. */
 interface PlayerLauncher {
     fun play(context: Context, request: PlaybackRequest)
+
+    /**
+     * Playbacks the server refused (the link expired) that the user asked to retry after reloading the page
+     * they came from ([PlaybackRequest.pageUrl]). The browser reloads it and plays the same video again.
+     */
+    val reloadRequests: Flow<PlaybackRequest>
 }

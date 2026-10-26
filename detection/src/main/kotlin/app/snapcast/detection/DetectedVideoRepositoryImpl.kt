@@ -11,7 +11,9 @@ import app.snapcast.core.detection.HelloMessage
 import app.snapcast.core.detection.MediaMessage
 import app.snapcast.core.detection.MediaReport
 import app.snapcast.core.detection.PageMessage
+import app.snapcast.core.detection.NativeCommand
 import app.snapcast.core.detection.RescanCommand
+import app.snapcast.core.detection.ThumbnailsCommand
 import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.DrmInfo
 import app.snapcast.data.di.ApplicationScope
@@ -87,6 +89,10 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
 
     override fun requestRescan(tabId: String) = onMain {
         tabs[tabId]?.rescanPort()?.let(::postRescan)
+    }
+
+    override fun requestThumbnails(tabId: String) = onMain {
+        tabs[tabId]?.rescanPort()?.let { post(it, ThumbnailsCommand) }
     }
 
     override fun clearTab(tabId: String) = onMain {
@@ -258,11 +264,13 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
         for (video in announcer.newlyVisible(visible)) announcements.tryEmit(video)
     }
 
-    private fun postRescan(port: WebExtension.Port) {
+    private fun postRescan(port: WebExtension.Port) = post(port, RescanCommand)
+
+    private fun post(port: WebExtension.Port, command: NativeCommand) {
         try {
-            port.postMessage(JSONObject(DetectorProtocol.encode(RescanCommand)))
+            port.postMessage(JSONObject(DetectorProtocol.encode(command)))
         } catch (e: JSONException) {
-            Log.w(TAG, "Could not encode the rescan command", e)
+            Log.w(TAG, "Could not encode the $command command", e)
         } catch (e: RuntimeException) {
             Log.w(TAG, "Could not post to the detector port", e)
         }

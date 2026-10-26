@@ -168,6 +168,36 @@ object UrlUtils {
 
     fun isHttp(url: String): Boolean = url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)
 
+    /**
+     * The Referer a browser sends from [documentUrl] to [targetUrl] under its default referrer policy
+     * (strict-origin-when-cross-origin): the document URL without fragment or credentials on the same origin,
+     * the document's origin on another origin, nothing from https to http. Null when either is not http(s).
+     */
+    fun referrerFor(documentUrl: String, targetUrl: String): String? {
+        val document = UriReference.parse(documentUrl.trim())
+        val target = UriReference.parse(targetUrl.trim())
+        if (!isHttpScheme(document.scheme) || !isHttpScheme(target.scheme)) return null
+        val documentScheme = document.scheme!!.lowercase()
+        val targetScheme = target.scheme!!.lowercase()
+        if (documentScheme == "https" && targetScheme == "http") return null
+        val host = document.host?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+        val port = effectivePort(documentScheme, document.port)
+        // IPv6 hosts keep their brackets (UriReference.host returns them as written).
+        val authority = if (port == defaultPort(documentScheme)) host else "$host:$port"
+        val sameOrigin = documentScheme == targetScheme &&
+            host == target.host?.lowercase() &&
+            port == effectivePort(targetScheme, target.port)
+        return if (sameOrigin) {
+            UriReference(documentScheme, authority, document.path.ifEmpty { "/" }, document.query, null).toString()
+        } else {
+            "$documentScheme://$authority/"
+        }
+    }
+
+    private fun defaultPort(scheme: String): Int = if (scheme == "https") 443 else 80
+
+    private fun effectivePort(scheme: String, port: String?): Int = port?.toIntOrNull() ?: defaultPort(scheme)
+
     private fun isHttpScheme(scheme: String?): Boolean =
         scheme.equals("http", ignoreCase = true) || scheme.equals("https", ignoreCase = true)
 }

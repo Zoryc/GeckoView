@@ -29,6 +29,8 @@
     DELIVER: 'snapcast-deliver',
     RESCAN: 'snapcast-rescan',
     RESCAN_ALL: 'snapcast-rescan-all',
+    THUMBNAILS: 'snapcast-thumbnails',
+    THUMBNAILS_ALL: 'snapcast-thumbnails-all',
     HELLO_REQUEST: 'snapcast-hello-request',
   });
 

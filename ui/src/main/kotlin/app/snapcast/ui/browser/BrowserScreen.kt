@@ -254,6 +254,7 @@ internal fun BrowserScreen(
             isDetectorReady = detectorReady,
             actions = videoActions,
             onRescan = viewModel::rescanVideos,
+            onNeedThumbnails = viewModel::requestThumbnails,
             onDismiss = { showVideoSheet = false },
         )
     }
@@ -403,8 +404,8 @@ private fun rememberVideoActions(
                     castGate { viewModel.cast(video, variant, subtitle, direct) }
                 }
             },
-            playOnPhone = { video ->
-                if (video.isDrmProtected) onExplainDrm() else viewModel.playOnPhone(context, video)
+            playOnPhone = { video, variant ->
+                if (video.isDrmProtected) onExplainDrm() else viewModel.playOnPhone(context, video, variant)
             },
             copyLink = { video -> copyToClipboard(context, clipLabel, video.url) },
             openWithOtherApp = { video ->
@@ -413,7 +414,9 @@ private fun rememberVideoActions(
                     scope.launch { snackbarHostState.showSnackbar(noAppMessage) }
                 }
             },
-            addToQueue = { video -> if (video.isDrmProtected) onExplainDrm() else castGate { viewModel.addToQueue(video) } },
+            addToQueue = { video, variant ->
+                if (video.isDrmProtected) onExplainDrm() else castGate { viewModel.addToQueue(video, variant) }
+            },
             explainDrm = { onExplainDrm() },
             canCastDirectly = viewModel::canCastDirectly,
         )

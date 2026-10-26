@@ -1,5 +1,6 @@
 package app.snapcast.ui.video
 
+import android.util.Log
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -62,6 +63,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,6 +79,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.StreamType
+import app.snapcast.core.model.VideoVariant
 import app.snapcast.core.util.UrlUtils
 import app.snapcast.ui.R
 import app.snapcast.ui.components.LiveTag
@@ -91,10 +94,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val FEEDBACK_MS = 1_500L
+private const val POSTER_TAG = "SnapcastPoster"
 
 /**
  * Bottom sheet listing the videos detected on the current page with their actions. Actions that leave
  * the page (cast, play, open with) close the sheet first; copy / queue confirm inline and keep it open.
+ * While it is open, videos without a usable picture get a frame captured in the page ([onNeedThumbnails]).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,8 +108,14 @@ fun VideoSheet(
     isDetectorReady: Boolean,
     actions: VideoActions,
     onRescan: () -> Unit,
+    onNeedThumbnails: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // Asked again whenever a video without poster or frame shows up; the page captures each video once.
+    val missingPictures = videos.filter { it.posterUrl == null && it.frameThumbnail == null }.map { it.id }
+    LaunchedEffect(missingPictures) {
+        if (missingPictures.isNotEmpty()) onNeedThumbnails()
+    }
     val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
     val closeThen: (() -> Unit) -> Unit = { block ->
@@ -116,7 +127,7 @@ fun VideoSheet(
     val sheetActions = remember(actions) {
         VideoActions(
             cast = { video, variant, subtitle, direct -> closeThen { actions.cast(video, variant, subtitle, direct) } },
-            playOnPhone = { video -> closeThen { actions.playOnPhone(video) } },
+            playOnPhone = { video, variant -> closeThen { actions.playOnPhone(video, variant) } },
             copyLink = actions.copyLink,
             openWithOtherApp = { video -> closeThen { actions.openWithOtherApp(video) } },
             addToQueue = actions.addToQueue,
@@ -139,7 +150,12 @@ fun VideoSheet(
                 } else {
                     LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
                         items(videos, key = { it.id }) { video ->
-                            VideoItem(video = video, actions = sheetActions, modifier = Modifier.animateItem())
+                            VideoItem(
+                                video = video,
+                                actions = sheetActions,
+                                onPictureFailed = onNeedThumbnails,
+                                modifier = Modifier.animateItem(),
+                            )
                             HorizontalDivider(
                                 modifier = Modifier.padding(horizontal = 16.dp),
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
@@ -214,8 +230,11 @@ private fun EmptyVideos(isDetectorReady: Boolean, onRescan: () -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun VideoItem(video: DetectedVideo, actions: VideoActions, modifier: Modifier = Modifier) {
+private fun VideoItem(video: DetectedVideo, actions: VideoActions, onPictureFailed: () -> Unit, modifier: Modifier = Modifier) {
     val drm = video.isDrmProtected
+    // The quality picked in "Choose quality" (by variant URL); Cast, Play, Queue and Subtitles all use it.
+    var pickedUrl by rememberSaveable(video.id) { mutableStateOf<String?>(null) }
+    val picked: VideoVariant? = pickedUrl?.let { url -> VideoLabels.qualityChoices(video).firstOrNull { it.url == url } }
     var showMenu by remember { mutableStateOf(false) }
     var showQuality by remember { mutableStateOf(false) }
     var showSubtitles by remember { mutableStateOf(false) }
@@ -237,7 +256,7 @@ private fun VideoItem(video: DetectedVideo, actions: VideoActions, modifier: Mod
 
     Column(modifier = modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row {
-            VideoThumbnail(video)
+            VideoThumbnail(video, onPictureFailed)
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -251,7 +270,7 @@ private fun VideoItem(video: DetectedVideo, actions: VideoActions, modifier: Mod
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    VideoLabels.chips(video).forEach { chip -> VideoChipTag(chip) }
+                    VideoLabels.chips(video, picked).forEach { chip -> VideoChipTag(chip) }
                 }
             }
         }
@@ -282,7 +301,7 @@ private fun VideoItem(video: DetectedVideo, actions: VideoActions, modifier: Mod
         Row(verticalAlignment = Alignment.CenterVertically) {
             DrmGuard(blocked = drm, onBlocked = explain) {
                 Button(
-                    onClick = { actions.cast(video, null, null, false) },
+                    onClick = { actions.cast(video, picked, null, false) },
                     enabled = !drm,
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 ) {
@@ -293,7 +312,7 @@ private fun VideoItem(video: DetectedVideo, actions: VideoActions, modifier: Mod
             }
             Spacer(Modifier.width(8.dp))
             DrmGuard(blocked = drm, onBlocked = explain) {
-                FilledTonalIconButton(onClick = { actions.playOnPhone(video) }, enabled = !drm) {
+                FilledTonalIconButton(onClick = { actions.playOnPhone(video, picked) }, enabled = !drm) {
                     Icon(Icons.Filled.PhoneAndroid, contentDescription = stringResource(R.string.ui_video_play))
                 }
             }
@@ -315,7 +334,7 @@ private fun VideoItem(video: DetectedVideo, actions: VideoActions, modifier: Mod
             DrmGuard(blocked = drm, onBlocked = explain) {
                 IconButton(
                     onClick = {
-                        actions.addToQueue(video)
+                        actions.addToQueue(video, picked)
                         queued = true
                     },
                     enabled = !drm,
@@ -342,7 +361,7 @@ private fun VideoItem(video: DetectedVideo, actions: VideoActions, modifier: Mod
                         onDismiss = { showMenu = false },
                         onCastDirect = {
                             showMenu = false
-                            actions.cast(video, null, null, true)
+                            actions.cast(video, picked, null, true)
                         },
                         onChooseQuality = {
                             showMenu = false
@@ -361,9 +380,10 @@ private fun VideoItem(video: DetectedVideo, actions: VideoActions, modifier: Mod
     if (showQuality) {
         QualityDialog(
             video = video,
+            picked = picked,
             onPick = { variant ->
                 showQuality = false
-                actions.cast(video, variant, null, false)
+                pickedUrl = variant?.url
             },
             onDismiss = { showQuality = false },
         )
@@ -373,7 +393,7 @@ private fun VideoItem(video: DetectedVideo, actions: VideoActions, modifier: Mod
             video = video,
             onPick = { track ->
                 showSubtitles = false
-                actions.cast(video, null, track, false)
+                actions.cast(video, picked, track, false)
             },
             onDismiss = { showSubtitles = false },
         )
@@ -450,10 +470,15 @@ private fun StreamType.placeholderIcon(isLive: Boolean): ImageVector = when {
     else -> Icons.Filled.Movie
 }
 
-/** Poster request headers: the video's Referer / User-Agent, and its cookies only for the poster's own host. */
+/**
+ * Poster request headers, as the browser sent them for that image: the Referer of the document that showed it
+ * ([DetectedVideo.posterReferer]: the player's frame, or the page for og:image; never the video's own Referer,
+ * which hotlink protection refuses for an image of the page), the User-Agent, and cookies only for the
+ * poster's own host.
+ */
 private fun posterHeaders(video: DetectedVideo, posterUrl: String): NetworkHeaders {
     val builder = NetworkHeaders.Builder()
-    video.headers.referer?.takeIf { it.isNotBlank() }?.let { builder.set("Referer", it) }
+    video.posterReferer?.takeIf { it.isNotBlank() }?.let { builder.set("Referer", it) }
     video.headers.userAgent?.takeIf { it.isNotBlank() }?.let { builder.set("User-Agent", it) }
     val posterHost = UrlUtils.hostOf(posterUrl)
     val cookie = posterHost?.let { host ->
@@ -463,8 +488,12 @@ private fun posterHeaders(video: DetectedVideo, posterUrl: String): NetworkHeade
     return builder.build()
 }
 
+/**
+ * The video's poster, else (or when the poster cannot be loaded) the frame captured in the page, else the
+ * type icon. A failed poster is logged and asks the page for a frame ([onPictureFailed]).
+ */
 @Composable
-private fun VideoThumbnail(video: DetectedVideo) {
+private fun VideoThumbnail(video: DetectedVideo, onPictureFailed: () -> Unit) {
     Box(
         modifier = Modifier
             .size(width = 120.dp, height = 68.dp)
@@ -479,14 +508,37 @@ private fun VideoThumbnail(video: DetectedVideo) {
             modifier = Modifier.size(32.dp),
         )
         val poster = video.posterUrl?.takeIf { UrlUtils.isHttp(it) }
-        if (poster != null) {
-            val context = LocalContext.current
-            val request = remember(poster, video.headers, video.cookiesByHost, video.isPrivate) {
+        var posterFailed by remember(poster) { mutableStateOf(false) }
+        val frame = video.frameThumbnail
+        val context = LocalContext.current
+        if (poster != null && !posterFailed) {
+            val request = remember(poster, video.posterReferer, video.headers.userAgent, video.cookiesByHost, video.isPrivate) {
                 ImageRequest.Builder(context)
                     .data(poster)
                     .httpHeaders(posterHeaders(video, poster))
                     // A private tab's poster stays in memory only, so nothing of it is left on disk.
                     .diskCachePolicy(if (video.isPrivate) CachePolicy.DISABLED else CachePolicy.ENABLED)
+                    .crossfade(true)
+                    .build()
+            }
+            AsyncImage(
+                model = request,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                onError = { error ->
+                    Log.w(POSTER_TAG, "Poster of ${UrlUtils.hostOf(poster)} failed: ${error.result.throwable}")
+                    posterFailed = true
+                    onPictureFailed()
+                },
+                modifier = Modifier.matchParentSize(),
+            )
+        } else if (frame != null) {
+            // A small JPEG data URL the page captured; never cached on disk (it may come from a private tab).
+            val request = remember(frame) {
+                ImageRequest.Builder(context)
+                    .data(frame)
+                    .memoryCacheKey("frame:${video.id}")
+                    .diskCachePolicy(CachePolicy.DISABLED)
                     .crossfade(true)
                     .build()
             }
@@ -512,15 +564,18 @@ private fun VideoChipTag(chip: VideoChip) {
     val extras = SnapcastThemeExtras.colors
     val (container, content) = when (chip.kind) {
         VideoChipKind.TYPE -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
-        VideoChipKind.QUALITY -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
+        VideoChipKind.QUALITY, VideoChipKind.QUALITY_RANGE ->
+            MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
         VideoChipKind.LIVE -> extras.live to extras.onLive
         VideoChipKind.DRM -> extras.drm to extras.onDrm
         else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
     }
-    val text = chip.text ?: when (chip.kind) {
-        VideoChipKind.LIVE -> stringResource(R.string.ui_video_chip_live)
-        VideoChipKind.DRM -> stringResource(R.string.ui_video_chip_drm)
-        VideoChipKind.SUBTITLES -> stringResource(R.string.ui_video_chip_cc)
+    val text = when {
+        chip.kind == VideoChipKind.QUALITY_RANGE -> stringResource(R.string.ui_video_quality_up_to, chip.text.orEmpty())
+        chip.text != null -> chip.text
+        chip.kind == VideoChipKind.LIVE -> stringResource(R.string.ui_video_chip_live)
+        chip.kind == VideoChipKind.DRM -> stringResource(R.string.ui_video_chip_drm)
+        chip.kind == VideoChipKind.SUBTITLES -> stringResource(R.string.ui_video_chip_cc)
         else -> ""
     }
     if (text.isEmpty()) return

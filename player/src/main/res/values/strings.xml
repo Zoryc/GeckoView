@@ -14,6 +14,7 @@
     <string name="player_error_title">Can\'t play this video</string>
     <string name="player_retry">Retry</string>
     <string name="player_close">Close</string>
+    <string name="player_reload_page">Reload page</string>
 
     <string name="player_error_http_forbidden">The server refused access (HTTP %1$d). The link may have expired: reload the page and try again.</string>
     <string name="player_error_http_not_found">The video wasn\'t found on the server (HTTP %1$d).</string>

@@ -52,9 +52,11 @@ class VideoCollectorTest {
         tracks: List<TrackReport> = emptyList(),
         headers: Map<String, String> = emptyMap(),
         mime: String? = null,
+        thumbnail: String? = null,
     ) = MediaReport(
         url = url,
         source = "dom",
+        thumbnail = thumbnail,
         mime = mime,
         frameUrl = frameUrl,
         pageUrl = page,
@@ -106,7 +108,7 @@ class VideoCollectorTest {
                 userAgent = "Gecko UA",
                 origin = "https://site.example.com",
                 cookie = "sid=1",
-                extra = mapOf("Authorization" to "Bearer t"),
+                extra = mapOf("Authorization" to "Bearer t", "Accept" to "*/*"),
             ),
         )
         assertThat(video.cookiesByHost).containsExactly("img.example.com", "x=1")
@@ -163,15 +165,119 @@ class VideoCollectorTest {
     }
 
     @Test
-    fun `dom report uses frame or page URL as referer`() {
-        val inFrame = collector.add(dom("https://media.example.com/a.mp4", frameUrl = "https://player.example.net/embed/1"))!!
-        assertThat(inFrame.headers.referer).isEqualTo("https://player.example.net/embed/1")
-        val topLevel = collector.add(dom("https://media.example.com/b.mp4"))!!
-        assertThat(topLevel.headers.referer).isEqualTo(page)
-        val aboutBlankFrame = collector.add(dom("https://media.example.com/c.mp4", frameUrl = "about:blank"))!!
-        assertThat(aboutBlankFrame.headers.referer).isEqualTo(page)
+    fun `dom report only carries the referer the page would send`() {
         val explicit = collector.add(dom("https://media.example.com/d.mp4", headers = mapOf("Referer" to "https://r.example/")))!!
         assertThat(explicit.headers.referer).isEqualTo("https://r.example/")
+        // No Referer in the report (the page sends none, e.g. <meta name=referrer content=no-referrer>): none is invented.
+        val none = collector.add(dom("https://media.example.com/a.mp4", frameUrl = "https://player.example.net/embed/1"))!!
+        assertThat(none.headers.referer).isNull()
+    }
+
+    @Test
+    fun `network headers stay authoritative when a dom report arrives later`() {
+        val url = "https://media.example.com/clip.mp4"
+        collector.add(network(url, mime = "video/mp4", headers = mapOf("User-Agent" to "Gecko")))
+        val merged = collector.add(dom(url, headers = mapOf("Referer" to "https://aggregator.example/watch/1")))!!
+        assertThat(merged.headers.referer).isNull()
+        assertThat(merged.headers.userAgent).isEqualTo("Gecko")
+    }
+
+    @Test
+    fun `first network report replaces the headers a dom report guessed`() {
+        val url = "https://media.example.com/clip.mp4"
+        collector.add(dom(url, headers = mapOf("Referer" to "https://aggregator.example/watch/1", "User-Agent" to "Gecko")))
+        val merged = collector.add(network(url, mime = "video/mp4", headers = mapOf("User-Agent" to "Gecko", "Cookie" to "s=1")))!!
+        assertThat(merged.headers.referer).isNull()
+        assertThat(merged.headers.cookie).isEqualTo("s=1")
+    }
+
+    @Test
+    fun `a playlist's own length is not listed as the video size`() {
+        val hls = collector.add(network("https://cdn.example.com/hls/master.m3u8", resourceType = "xmlhttprequest", size = 424))!!
+        assertThat(hls.sizeBytes).isNull()
+        val again = collector.add(network("https://cdn.example.com/hls/master.m3u8?x=1", resourceType = "xmlhttprequest", size = 424))
+        assertThat(again?.sizeBytes).isNull()
+    }
+
+    // ---- cookies ----
+
+    @Test
+    fun `dom-only entries get the cookies seen in the tab`() {
+        collector.add(network("https://cdn.example.com/a/master.m3u8", cookiesByHost = mapOf("media.example.com" to "sess=1")))
+        val domOnly = collector.add(dom("https://media.example.com/b.mp4"))!!
+        assertThat(domOnly.cookiesByHost).containsEntry("media.example.com", "sess=1")
+    }
+
+    @Test
+    fun `cookies brought by a folded variant reach the master and every entry`() {
+        val master = collector.add(
+            network("https://cdn.example.com/hls/master.m3u8", resourceType = "xmlhttprequest", cookiesByHost = mapOf("news.example" to "site=1")),
+        )!!
+        val mp4 = collector.add(network("https://cdn.example.com/clip.mp4", mime = "video/mp4"))!!
+        collector.onMasterParsed(master.id, listOf("https://cdn.example.com/hls/720p.m3u8"))
+        // The background page re-sends the latest (variant) playlist with the tab's newer cookies.
+        val refreshed = collector.add(
+            network(
+                "https://cdn.example.com/hls/720p.m3u8",
+                resourceType = "xmlhttprequest",
+                cookiesByHost = mapOf("news.example" to "site=1", "cdn.example.com" to "hdntl=2", "seg.example" to "cf=x"),
+            ),
+        )
+        assertThat(refreshed).isNull()
+        val updated = collector.videos.first { it.id == master.id }
+        assertThat(updated.cookiesByHost).containsExactly("news.example", "site=1", "cdn.example.com", "hdntl=2", "seg.example", "cf=x")
+        assertThat(collector.videos.first { it.id == mp4.id }.cookiesByHost).containsEntry("cdn.example.com", "hdntl=2")
+    }
+
+    @Test
+    fun `newest cookie value for a host wins`() {
+        collector.add(network("https://cdn.example.com/a.mp4", mime = "video/mp4", cookiesByHost = mapOf("cdn.example.com" to "t=old")))
+        collector.add(network("https://cdn.example.com/b.mp4", mime = "video/mp4", cookiesByHost = mapOf("cdn.example.com" to "t=new")))
+        assertThat(collector.videos.map { it.cookiesByHost["cdn.example.com"] }).containsExactly("t=new", "t=new")
+    }
+
+    // ---- posters ----
+
+    @Test
+    fun `element poster keeps the referer of the frame that showed it`() {
+        val video = collector.add(
+            dom("https://media.example.com/a.mp4", poster = "https://player.example.net/thumbs/1.jpg", frameUrl = "https://player.example.net/embed/1?x=1#t"),
+        )!!
+        assertThat(video.posterReferer).isEqualTo("https://player.example.net/embed/1?x=1")
+        val crossOrigin = collector.add(dom("https://media.example.com/b.mp4", poster = "https://img.example.org/2.jpg", frameUrl = "https://player.example.net/embed/2"))!!
+        assertThat(crossOrigin.posterReferer).isEqualTo("https://player.example.net/")
+    }
+
+    @Test
+    fun `og image poster is fetched with the page's referer, not the player's`() {
+        collector.onPage(PageMessage(url = page, ogImage = "https://site.example.com/og.jpg"))
+        val video = collector.add(
+            network(
+                "https://cdn.example.com/hls/master.m3u8",
+                resourceType = "xmlhttprequest",
+                headers = mapOf("Referer" to "https://embed.example.net/player.html"),
+            ),
+        )!!
+        assertThat(video.posterUrl).isEqualTo("https://site.example.com/og.jpg")
+        assertThat(video.posterReferer).isEqualTo(page)
+        assertThat(video.headers.referer).isEqualTo("https://embed.example.net/player.html")
+    }
+
+    // ---- frame thumbnails ----
+
+    @Test
+    fun `frame thumbnail of a blob element lands on the adaptive stream`() {
+        val hls = collector.add(network("https://cdn.example.com/hls/master.m3u8", resourceType = "xmlhttprequest"))!!
+        collector.add(dom("blob:https://site.example.com/1", isBlob = true, thumbnail = "data:image/jpeg;base64,AAAA"))
+        assertThat(collector.videos.single { it.id == hls.id }.frameThumbnail).isEqualTo("data:image/jpeg;base64,AAAA")
+    }
+
+    @Test
+    fun `thumbnails that are not small jpeg data urls are ignored`() {
+        val video = collector.add(dom("https://media.example.com/a.mp4", thumbnail = "https://evil.example/x.jpg"))!!
+        assertThat(video.frameThumbnail).isNull()
+        val huge = "data:image/jpeg;base64," + "A".repeat(300_000)
+        assertThat(collector.add(dom("https://media.example.com/b.mp4", thumbnail = huge))!!.frameThumbnail).isNull()
     }
 
     // ---- dedupe & merge ----
@@ -202,10 +308,10 @@ class VideoCollectorTest {
         assertThat(merged.detectedAt).isEqualTo(1_000L)
         assertThat(merged.url).isEqualTo(url)
 
-        // A later DOM report does not replace network headers, but fills gaps.
+        // A later DOM report does not change what the browser really sent.
         val again = collector.add(dom(url, headers = mapOf("User-Agent" to "DOM UA")))!!
         assertThat(again.headers.referer).isEqualTo("https://site.example.com/")
-        assertThat(again.headers.userAgent).isEqualTo("DOM UA")
+        assertThat(again.headers.userAgent).isNull()
         assertThat(again.source).isEqualTo(DetectionSource.BOTH)
     }
 
@@ -379,7 +485,9 @@ class VideoCollectorTest {
         assertThat(enriched.title).isEqualTo("Episode 1")
         assertThat(enriched.posterUrl).isEqualTo("https://img/e1.jpg")
         assertThat(enriched.durationSec).isEqualTo(1320.5)
-        assertThat(enriched.height).isEqualTo(720)
+        // The element's size is the rendition the page player decodes right now, not the stream's quality.
+        assertThat(enriched.height).isNull()
+        assertThat(enriched.qualityLabel).isNull()
         assertThat(collector.videos.first { it.id == mp4.id }.posterUrl).isNull()
         assertThat(collector.videos.first().title).isEqualTo("Watch 42 - Site")
         assertThat(collector.videos).hasSize(3)

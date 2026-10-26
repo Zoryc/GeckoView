@@ -20,16 +20,20 @@ import app.snapcast.core.model.AppSettings
 import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.SubtitleTrack
 import app.snapcast.core.model.VideoVariant
+import app.snapcast.core.util.CookieHeaders
+import app.snapcast.core.util.UrlUtils
 import app.snapcast.data.bookmarks.BookmarkRepository
 import app.snapcast.data.history.HistoryRepository
 import app.snapcast.data.settings.SettingsRepository
 import app.snapcast.detection.DetectedVideoRepository
+import app.snapcast.player.PlaybackQuality
 import app.snapcast.player.PlaybackRequest
 import app.snapcast.player.PlayerLauncher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -46,15 +50,26 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.mozilla.geckoview.GeckoSession
 import javax.inject.Inject
 
 private const val SUGGESTION_DEBOUNCE_MS = 150L
 private const val STOP_TIMEOUT_MS = 5_000L
+
+/** Thumbnail requests closer together than this are dropped (the page captures each video once anyway). */
+private const val THUMBNAIL_REQUEST_INTERVAL_MS = 1_500L
+
+/** How long a reloaded page has to show the refused video again before the user is asked to pick it. */
+private const val REPLAY_TIMEOUT_MS = 30_000L
+
+/** Cookies handed to the phone player travel in an Intent, which has a size limit. */
+private const val MAX_PLAYER_COOKIE_CHARS = 32_000
 
 /**
  * State and actions of the browser screen: the selected tab, address-bar suggestions, detected videos,
@@ -133,6 +148,9 @@ internal class BrowserViewModel @Inject constructor(
     /** POST_NOTIFICATIONS is requested at most once per process, before the first cast. */
     var notificationPermissionRequested: Boolean = false
 
+    private var lastThumbnailRequestAt = 0L
+    private var replayJob: Job? = null
+
     init {
         viewModelScope.launch {
             browserTabs.events.collect { event ->
@@ -151,6 +169,9 @@ internal class BrowserViewModel @Inject constructor(
                 val ids = tabs.mapTo(HashSet()) { it.id }
                 _openedFromHome.update { current -> current.filterTo(HashSet()) { it in ids } }
             }
+        }
+        viewModelScope.launch {
+            playerLauncher.reloadRequests.collect(::reloadAndReplay)
         }
     }
 
@@ -282,6 +303,14 @@ internal class BrowserViewModel @Inject constructor(
         browserTabs.selectedTabId.value?.let(videoRepository::requestRescan)
     }
 
+    /** The open video list has videos without a usable picture: ask the page for frame captures. */
+    fun requestThumbnails() {
+        val now = System.currentTimeMillis()
+        if (now - lastThumbnailRequestAt < THUMBNAIL_REQUEST_INTERVAL_MS) return
+        lastThumbnailRequestAt = now
+        browserTabs.selectedTabId.value?.let(videoRepository::requestThumbnails)
+    }
+
     fun cast(video: DetectedVideo, variant: VideoVariant? = null, subtitle: SubtitleTrack? = null, direct: Boolean = false) {
         viewModelScope.launch {
             val result = safeCast { castController.cast(video, variant, subtitle, direct) }
@@ -289,9 +318,9 @@ internal class BrowserViewModel @Inject constructor(
         }
     }
 
-    fun addToQueue(video: DetectedVideo) {
+    fun addToQueue(video: DetectedVideo, variant: VideoVariant? = null) {
         viewModelScope.launch {
-            val result = safeCast { castController.addToQueue(video) }
+            val result = safeCast { castController.addToQueue(video, variant) }
             uiEventChannel.trySend(BrowserUiEvent.CastOutcome(result, video, queued = true))
         }
     }
@@ -304,7 +333,8 @@ internal class BrowserViewModel @Inject constructor(
         CastResult.Error(CastErrorKind.LOAD_FAILED, e.message.orEmpty())
     }
 
-    fun playOnPhone(context: Context, video: DetectedVideo) {
+    /** Plays [video] on the phone, pinned to [variant]'s quality when one was picked. */
+    fun playOnPhone(context: Context, video: DetectedVideo, variant: VideoVariant? = null) {
         playerLauncher.play(
             context,
             PlaybackRequest(
@@ -313,13 +343,49 @@ internal class BrowserViewModel @Inject constructor(
                 type = video.type,
                 mimeType = video.mimeType,
                 headers = video.headers.toMap(),
-                cookiesByHost = video.cookiesByHost,
+                cookiesByHost = CookieHeaders.bounded(video.cookiesByHost, listOfNotNull(UrlUtils.hostOf(video.url)), MAX_PLAYER_COOKIE_CHARS),
                 subtitles = video.subtitles,
                 posterUrl = video.posterUrl,
                 pageUrl = video.pageUrl,
                 isPrivate = video.isPrivate,
+                quality = variant?.let { PlaybackQuality(it.width, it.height, it.bandwidth) },
             ),
         )
+    }
+
+    /**
+     * The player was refused [request]'s link (it expired) and the user chose "Reload page": reload the page it
+     * came from (in its tab when still open), wait for the same video to show up again with a fresh link, and
+     * play it. No extra requests: the page itself fetches the new link.
+     */
+    private fun reloadAndReplay(request: PlaybackRequest) {
+        val pageUrl = request.pageUrl?.takeIf(UrlUtils::isHttp) ?: return
+        val tabs = browserTabs.tabs.value
+        val sameDocument = { url: String? -> url?.substringBefore('#') == pageUrl.substringBefore('#') }
+        val tab = tabs.firstOrNull { it.id == browserTabs.selectedTabId.value && sameDocument(it.url) }
+            ?: tabs.firstOrNull { sameDocument(it.url) && it.isPrivate == request.isPrivate }
+        val since = System.currentTimeMillis()
+        val tabId = if (tab != null) {
+            browserTabs.selectTab(tab.id)
+            browserTabs.reload(tab.id)
+            tab.id
+        } else {
+            browserTabs.newTab(url = pageUrl, private = request.isPrivate, select = true, parentId = null)
+        }
+        uiEventChannel.trySend(BrowserUiEvent.ReloadingForReplay)
+        replayJob?.cancel()
+        replayJob = viewModelScope.launch {
+            val video = withTimeoutOrNull(REPLAY_TIMEOUT_MS) {
+                videoRepository.videosForTab(tabId).mapNotNull { VideoReplay.find(it, request.url, since) }.first()
+            }
+            uiEventChannel.trySend(
+                if (video != null) {
+                    BrowserUiEvent.PlayOnPhone(video, VideoReplay.variantFor(video, request.quality))
+                } else {
+                    BrowserUiEvent.ReplayNotFound
+                },
+            )
+        }
     }
 
     fun canCastDirectly(video: DetectedVideo): Boolean = castController.canCastDirectly(video)

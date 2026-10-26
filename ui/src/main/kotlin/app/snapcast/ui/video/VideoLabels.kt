@@ -5,12 +5,16 @@ import app.snapcast.core.model.StreamType
 import app.snapcast.core.model.VideoVariant
 import app.snapcast.core.util.Formatters
 
-/** Kinds of metadata tags shown under a video in the list. */
-enum class VideoChipKind { TYPE, QUALITY, LIVE, DURATION, SIZE, SUBTITLES, DOMAIN, DRM }
+/**
+ * Kinds of metadata tags shown under a video in the list. [QUALITY_RANGE] is the best quality of a stream whose
+ * player switches between several ("Up to 1080p"); [QUALITY] a fixed one (a file, one variant, a picked quality).
+ */
+enum class VideoChipKind { TYPE, QUALITY, QUALITY_RANGE, LIVE, DURATION, SIZE, SUBTITLES, DOMAIN, DRM }
 
 /**
  * One tag. [text] is null for kinds whose label is a localized string chosen by the UI
- * ([VideoChipKind.LIVE], [VideoChipKind.DRM], [VideoChipKind.SUBTITLES]).
+ * ([VideoChipKind.LIVE], [VideoChipKind.DRM], [VideoChipKind.SUBTITLES]); for [VideoChipKind.QUALITY_RANGE]
+ * it is the best quality, which the UI wraps ("Up to %s").
  */
 data class VideoChip(val kind: VideoChipKind, val text: String?)
 
@@ -18,11 +22,17 @@ data class VideoChip(val kind: VideoChipKind, val text: String?)
 object VideoLabels {
     /**
      * Tags in display order: type (HLS/DASH/MP4...), quality, LIVE or duration, size, subtitles, source domain, DRM.
-     * Unknown values are omitted.
+     * Unknown values are omitted. [picked] is the quality chosen for this video, shown instead of the stream's range.
      */
-    fun chips(video: DetectedVideo): List<VideoChip> = buildList {
+    fun chips(video: DetectedVideo, picked: VideoVariant? = null): List<VideoChip> = buildList {
         add(VideoChip(VideoChipKind.TYPE, video.type.label))
-        video.qualityLabel?.takeIf { it.isNotBlank() }?.let { add(VideoChip(VideoChipKind.QUALITY, it)) }
+        if (picked != null) {
+            add(VideoChip(VideoChipKind.QUALITY, picked.qualityLabel))
+        } else {
+            video.qualityLabel?.takeIf { it.isNotBlank() }?.let {
+                add(VideoChip(if (video.hasQualityRange) VideoChipKind.QUALITY_RANGE else VideoChipKind.QUALITY, it))
+            }
+        }
         if (video.isLive) {
             add(VideoChip(VideoChipKind.LIVE, null))
         } else {
@@ -30,7 +40,8 @@ object VideoLabels {
                 add(VideoChip(VideoChipKind.DURATION, Formatters.duration(it)))
             }
         }
-        video.sizeBytes?.takeIf { it > 0 }?.let { add(VideoChip(VideoChipKind.SIZE, Formatters.fileSize(it))) }
+        // An adaptive stream's only known length is its playlist's, which says nothing about the video.
+        video.sizeBytes?.takeIf { it > 0 && !video.type.isAdaptive }?.let { add(VideoChip(VideoChipKind.SIZE, Formatters.fileSize(it))) }
         if (video.subtitles.isNotEmpty()) add(VideoChip(VideoChipKind.SUBTITLES, null))
         video.sourceDomain.takeIf { it.isNotBlank() }?.let { add(VideoChip(VideoChipKind.DOMAIN, it)) }
         if (video.isDrmProtected) add(VideoChip(VideoChipKind.DRM, null))

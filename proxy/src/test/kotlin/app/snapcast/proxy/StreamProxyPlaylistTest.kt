@@ -143,6 +143,30 @@ class StreamProxyPlaylistTest {
     }
 
     @Test
+    fun `a cookie the master response sets is sent with the variant and segments`() {
+        origin.on("/s/master.m3u8") {
+            MockResponse.Builder()
+                .setHeader("Content-Type", "application/vnd.apple.mpegurl")
+                .addHeader("Set-Cookie", "hdntl=exp=9~hmac=1; Path=/s")
+                .body("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nv.m3u8\n")
+                .build()
+        }
+        origin.text("/s/v.m3u8", "#EXTM3U\n#EXTINF:4,\nseg.ts\n#EXT-X-ENDLIST\n", "application/vnd.apple.mpegurl")
+        origin.text("/s/seg.ts", "segment", "video/mp2t")
+        val stream = register(origin.url("/s/master.m3u8"), headers = mapOf("Cookie" to "site=1"))
+
+        val variant = harness.fetch(proxiedUris(harness.fetch(stream.path).text).single())
+        proxiedUris(variant.text).forEach { assertThat(harness.fetch(it).code).isEqualTo(200) }
+
+        assertThat(origin.requestsTo("/s/master.m3u8").single().headers["Cookie"]).isEqualTo("site=1")
+        assertThat(origin.requestsTo("/s/v.m3u8").single().headers["Cookie"]).isEqualTo("site=1; hdntl=exp=9~hmac=1")
+        assertThat(origin.requestsTo("/s/seg.ts").single().headers["Cookie"]).isEqualTo("site=1; hdntl=exp=9~hmac=1")
+        // Another registration starts without them: nothing is shared or stored.
+        register(origin.url("/s/v.m3u8"), headers = mapOf("Cookie" to "site=1")).let { harness.fetch(it.path) }
+        assertThat(origin.requestsTo("/s/v.m3u8").last().headers["Cookie"]).isEqualTo("site=1")
+    }
+
+    @Test
     fun `authorization is only sent to the stream host`() {
         origin.text(
             "/a/list.m3u8",

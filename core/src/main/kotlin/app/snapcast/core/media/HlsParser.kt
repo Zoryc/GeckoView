@@ -331,7 +331,9 @@ object HlsParser {
 
     /**
      * Variants mapped to [VideoVariant], best first, de-duplicated by resolution+bandwidth. A variant whose
-     * AUDIO group has renditions with their own URI is marked [VideoVariant.separateAudio].
+     * audio plays from a separate URI (the rendition a player picks by default in its AUDIO group: DEFAULT,
+     * else AUTOSELECT, else the first) is marked [VideoVariant.separateAudio]. Alternate languages with their
+     * own URI do not count: the variant's playlist still carries the default audio.
      */
     fun videoVariants(master: HlsPlaylist.Master): List<VideoVariant> =
         master.variants
@@ -341,6 +343,8 @@ object HlsParser {
 
     private fun hasSeparateAudio(master: HlsPlaylist.Master, variant: HlsVariant): Boolean {
         val group = variant.audioGroup ?: return false
-        return master.renditions.any { it.type == "AUDIO" && it.groupId == group && it.url != null }
+        val renditions = master.renditions.filter { it.type == "AUDIO" && it.groupId == group }
+        val played = renditions.firstOrNull { it.isDefault } ?: renditions.firstOrNull { it.autoSelect } ?: renditions.firstOrNull()
+        return played?.url != null
     }
 }

@@ -75,6 +75,8 @@ data class MediaReport(
     val width: Int? = null,
     val height: Int? = null,
     val poster: String? = null,
+    /** DOM only: a frame of the element as a `data:image/jpeg;base64,` URL, sent after a [ThumbnailsCommand]. */
+    val thumbnail: String? = null,
     val title: String? = null,
     /** DOM only: the element's src was a blob:/MediaSource URL (not castable; used to enrich network finds). */
     val isBlob: Boolean = false,
@@ -99,6 +101,14 @@ sealed interface NativeCommand
 @Serializable
 @SerialName("rescan")
 data object RescanCommand : NativeCommand
+
+/**
+ * Ask every frame for one small frame capture of each loaded `<video>` (sent while the video list is open,
+ * so the capture only happens when someone looks at it). Answered with media reports carrying [MediaReport.thumbnail].
+ */
+@Serializable
+@SerialName("thumbnails")
+data object ThumbnailsCommand : NativeCommand
 
 object DetectorProtocol {
     val json: Json = Json {

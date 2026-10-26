@@ -161,6 +161,12 @@ private fun handleEvent(
             actionLabel = context.getString(R.string.ui_event_switch),
             onAction = { callbacks.onSelectTab(event.tabId) },
         )
+        BrowserUiEvent.ReloadingForReplay -> snackbars.showRes(R.string.ui_event_reloading_for_replay)
+        is BrowserUiEvent.PlayOnPhone -> viewModel.playOnPhone(context, event.video, event.variant)
+        BrowserUiEvent.ReplayNotFound -> snackbars.show(
+            message = context.getString(R.string.ui_event_replay_not_found),
+            duration = SnackbarDuration.Long,
+        )
     }
 }
 

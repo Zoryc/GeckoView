@@ -22,15 +22,17 @@ internal class PlayerFactory(private val okHttpClient: OkHttpClient) {
     /**
      * A player whose http(s) requests replay the request's captured headers (through a client derived from
      * the shared OkHttp client, so the connection pool is shared) while content:// and file:// URIs, e.g.
-     * user-picked subtitle files, go through [DefaultDataSource]'s local data sources. Cookies are scoped
-     * per host by [ScopedCookieInterceptor]: manifests, segments and subtitles on other hosts never get the
-     * played URL's Cookie.
+     * user-picked subtitle files, go through [DefaultDataSource]'s local data sources. Cookies and
+     * Authorization are scoped per host by [ScopedCookieInterceptor]: manifests, segments and subtitles on
+     * other hosts never get the played URL's credentials. Cookies the servers set during playback are kept
+     * for it in memory ([SessionCookieJar]).
      */
     @OptIn(UnstableApi::class)
     fun createPlayer(context: Context, request: PlaybackRequest): ExoPlayer {
         val headers = RequestHeaders.from(request.headers)
         val client = okHttpClient.newBuilder()
-            .addNetworkInterceptor(ScopedCookieInterceptor(request.url, headers.cookie, request.cookiesByHost))
+            .cookieJar(SessionCookieJar())
+            .addNetworkInterceptor(ScopedCookieInterceptor(request.url, headers.cookie, request.cookiesByHost, headers.authorization))
             .build()
         val httpFactory = OkHttpDataSource.Factory(client)
             .setUserAgent(headers.userAgent)

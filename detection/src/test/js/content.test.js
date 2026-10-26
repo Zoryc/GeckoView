@@ -221,7 +221,8 @@ test('elementReports describes the selected http(s) source with element metadata
     width: 1920,
     height: 1080,
     poster: 'https://cdn.example/poster.jpg',
-    requestHeaders: { Referer: PAGE, 'User-Agent': UA },
+    // Another origin: the page's default policy sends its origin only.
+    requestHeaders: { Referer: 'https://site.example/', 'User-Agent': UA },
     tracks: [{ url: 'https://cdn.example/en.vtt', kind: 'subtitles', lang: 'en', label: 'English' }],
     timestamp: 42,
     url: 'https://cdn.example/movie.mp4',
@@ -400,14 +401,14 @@ test('the top frame connects, greets the background, scans and reports page meta
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['src', 'poster'],
+    attributeFilter: ['src', 'poster', 'data-poster'],
   });
 
   frame.timers.run();
   const media = port.posted.filter((m) => m.type === 'media');
   assert.equal(media.length, 1);
   assert.deepEqual(media[0].items.map((i) => [i.url, i.duration, i.pageUrl, i.frameUrl]), [['https://cdn.example/a.mp4', 60, PAGE, PAGE]]);
-  assert.deepEqual(media[0].items[0].requestHeaders, { Referer: PAGE, 'User-Agent': UA });
+  assert.deepEqual(media[0].items[0].requestHeaders, { Referer: 'https://site.example/', 'User-Agent': UA });
   assert.deepEqual(port.posted.find((m) => m.type === 'page'), { type: 'page', url: PAGE, title: 'Watch page', ogImage: 'https://site.example/og.jpg' });
   assert.deepEqual(frame.runtime.sent.find((m) => m.kind === 'snapcast-top'), { kind: 'snapcast-top', url: PAGE, title: 'Watch page' });
 
@@ -592,4 +593,148 @@ test('a page restored from the back/forward cache reconnects and greets again', 
   frame.timers.run();
   assert.equal(frame.runtime.ports.length, 2);
   assert.equal(frame.runtime.sent.filter((m) => m.kind === 'snapcast-hello').length, 2);
+});
+
+test('referrerFor applies the page referrer policy like the browser', () => {
+  const page = 'https://user:pw@site.example/watch/1?a=1#t=5';
+  const same = 'https://site.example/v.mp4';
+  const other = 'https://cdn.example/v.mp4';
+  const insecure = 'http://cdn.example/v.mp4';
+  const r = (target, policy) => content.referrerFor(page, target, policy);
+  assert.equal(r(same), 'https://site.example/watch/1?a=1');
+  assert.equal(r(other), 'https://site.example/');
+  assert.equal(r(insecure), undefined);
+  assert.equal(r(other, 'no-referrer'), undefined);
+  assert.equal(r(other, 'unsafe-url'), 'https://site.example/watch/1?a=1');
+  assert.equal(r(same, 'origin'), 'https://site.example/');
+  assert.equal(r(other, 'same-origin'), undefined);
+  assert.equal(r(other, 'no-referrer-when-downgrade'), 'https://site.example/watch/1?a=1');
+  assert.equal(r(insecure, 'strict-origin'), undefined);
+  assert.equal(content.referrerFor('about:blank', other), undefined);
+});
+
+test('referrerPolicyOf reads the last valid meta referrer token', () => {
+  const metas = [element('meta', {}, { content: 'origin' }), element('meta', {}, { content: 'bogus, No-Referrer' })];
+  const doc = { querySelectorAll: (selector) => (selector.startsWith('meta[name="referrer"') ? metas : []) };
+  assert.equal(content.referrerPolicyOf(doc), 'no-referrer');
+  assert.equal(content.referrerPolicyOf({ querySelectorAll: () => [] }), 'strict-origin-when-cross-origin');
+  const report = content.elementReports(video({ currentSrc: 'https://cdn.example/a.mp4' }), context({ referrerPolicy: 'no-referrer' }))[0];
+  assert.deepEqual(report.requestHeaders, { 'User-Agent': UA });
+});
+
+/** A node tree for posterOf: parentElement links, class-selector lookups and on-screen boxes. */
+function playerTree({ layerRect, layerStyle, layerTag = 'div', layerAttrs = {}, containerAttrs = {} }) {
+  const rect = (left, top, width, height) => ({ left, top, width, height, right: left + width, bottom: top + height });
+  const styles = new Map();
+  const view = { getComputedStyle: (node) => styles.get(node) || { backgroundImage: 'none' } };
+  const ownerDocument = { baseURI: 'https://embed.example/player/1', defaultView: view };
+  const layer = element(layerTag, { ownerDocument, getBoundingClientRect: () => layerRect }, layerAttrs);
+  if (layerStyle) styles.set(layer, { backgroundImage: layerStyle });
+  const el = video({ ownerDocument, getBoundingClientRect: () => rect(0, 0, 640, 360) });
+  const container = element('div', { ownerDocument }, containerAttrs);
+  container.querySelectorAll = (selector) => (selector.includes('poster') ? [layer] : []);
+  el.parentElement = container;
+  container.parentElement = element('body');
+  return { el, rect };
+}
+
+test('posterOf finds posters that player libraries draw outside the poster attribute', () => {
+  const full = { left: 0, top: 0, width: 640, height: 360, right: 640, bottom: 360 };
+  const layered = playerTree({ layerRect: full, layerStyle: 'url("/art/poster.jpg")' });
+  assert.equal(content.posterOf(layered.el), 'https://embed.example/art/poster.jpg');
+
+  const img = playerTree({ layerRect: full, layerTag: 'img' });
+  img.el.parentElement.querySelectorAll = (selector) => (selector.includes('poster')
+    ? [element('img', { currentSrc: 'https://img.example/p.webp', getBoundingClientRect: () => full })]
+    : []);
+  assert.equal(content.posterOf(img.el), 'https://img.example/p.webp');
+
+  const attr = playerTree({ layerRect: full, containerAttrs: { 'data-poster': 'thumbs/9.jpg' } });
+  assert.equal(content.posterOf(attr.el), 'https://embed.example/player/thumbs/9.jpg');
+
+  // A small thumbnail next to the player (a related video) is not its poster.
+  const small = { left: 650, top: 0, width: 120, height: 68, right: 770, bottom: 68 };
+  assert.equal(content.posterOf(playerTree({ layerRect: small, layerStyle: 'url(/other.jpg)' }).el), undefined);
+
+  // The poster attribute wins.
+  const own = playerTree({ layerRect: full, layerStyle: 'url(/layer.jpg)' });
+  own.el.poster = 'https://embed.example/own.jpg';
+  assert.equal(content.posterOf(own.el), 'https://embed.example/own.jpg');
+});
+
+test('isDark tells a black frame from a picture', () => {
+  assert.equal(content.isDark(new Uint8ClampedArray(320 * 180 * 4)), true);
+  assert.equal(content.isDark(new Uint8ClampedArray(320 * 180 * 4).fill(128)), false);
+});
+
+function fakeCanvasDocument(videos, drawn) {
+  const doc = fakeDocument(videos);
+  doc.createElement = (tag) => {
+    assert.equal(tag, 'canvas');
+    const canvas = {
+      getContext: () => ({
+        drawImage: (source, x, y, w, h) => drawn.push([source, w, h]),
+        getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4).fill(drawn.dark ? 0 : 200) }),
+      }),
+      toDataURL: (type, quality) => `data:${type};base64,${canvas.width}x${canvas.height}@${quality}`,
+    };
+    return canvas;
+  };
+  return doc;
+}
+
+function startCanvasFrame(videos, drawn) {
+  const runtime = fakeRuntime();
+  runtime.replies['snapcast-hello'] = { messages: [] };
+  const timers = fakeTimers();
+  content.startContent({
+    window: fakeWindow(PAGE, true),
+    document: fakeCanvasDocument(videos, drawn),
+    browser: { runtime },
+    MutationObserver: fakeObserverClass().Observer,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
+    now: () => 1,
+  });
+  timers.run();
+  return { runtime, port: runtime.ports[0] };
+}
+
+test('a thumbnails command captures each loaded video once and asks the other frames', () => {
+  const drawn = [];
+  const playing = video({ currentSrc: 'blob:https://site.example/1', readyState: 4, videoWidth: 1920, videoHeight: 1080 });
+  const notLoaded = video({ currentSrc: 'https://cdn.example/b.mp4', readyState: 1, videoWidth: 0, videoHeight: 0 });
+  const drm = video({ currentSrc: 'blob:https://site.example/2', readyState: 4, videoWidth: 640, videoHeight: 360, mediaKeys: {} });
+  const { runtime, port } = startCanvasFrame([playing, notLoaded, drm], drawn);
+  port.onMessage.fire({ type: 'rescan' });
+  port.posted.length = 0;
+
+  port.onMessage.fire({ type: 'thumbnails' });
+  const items = port.posted.filter((m) => m.type === 'media').flatMap((m) => m.items);
+  assert.deepEqual(items.map((i) => [i.url, i.isBlob, i.thumbnail]), [
+    ['blob:https://site.example/1', true, 'data:image/jpeg;base64,320x180@0.7'],
+  ]);
+  assert.deepEqual(drawn.map(([source, w, h]) => [source === playing, w, h]), [[true, 320, 180]]);
+  assert.ok(runtime.sent.some((m) => m.kind === 'snapcast-thumbnails-all'));
+
+  // Captured once; replays on later rescans do not carry the picture again.
+  port.posted.length = 0;
+  port.onMessage.fire({ type: 'thumbnails' });
+  port.onMessage.fire({ type: 'rescan' });
+  assert.equal(drawn.length, 1);
+  assert.ok(port.posted.filter((m) => m.type === 'media').flatMap((m) => m.items).every((i) => !i.thumbnail));
+});
+
+test('a black frame is not captured and is tried again on the next request', () => {
+  const drawn = [];
+  drawn.dark = true;
+  const el = video({ currentSrc: 'https://cdn.example/a.mp4', readyState: 2, videoWidth: 640, videoHeight: 360 });
+  const { runtime, port } = startCanvasFrame([el], drawn);
+  port.onMessage.fire({ type: 'thumbnails' });
+  assert.equal(port.posted.filter((m) => m.type === 'media' && m.items.some((i) => i.thumbnail)).length, 0);
+  drawn.dark = false;
+  runtime.onMessage.fire({ kind: 'snapcast-thumbnails' });
+  const thumbs = port.posted.filter((m) => m.type === 'media').flatMap((m) => m.items).filter((i) => i.thumbnail);
+  assert.deepEqual(thumbs.map((i) => i.url), ['https://cdn.example/a.mp4']);
+  assert.equal(drawn.length, 2);
 });

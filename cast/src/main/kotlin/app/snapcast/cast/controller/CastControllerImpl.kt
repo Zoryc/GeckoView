@@ -224,7 +224,7 @@ internal class CastControllerImpl @Inject constructor(
         detached { execute(CastRequest.Queue) }
     }
 
-    override suspend fun addToQueue(video: DetectedVideo, playNext: Boolean): CastResult =
+    override suspend fun addToQueue(video: DetectedVideo, variant: VideoVariant?, playNext: Boolean): CastResult =
         withContext(Dispatchers.Main.immediate) {
             if (video.isDrmProtected) return@withContext failure(CastErrorKind.DRM, R.string.cast_error_drm)
             val connected = chromecast.connectionState.value == CastConnectionState.CONNECTED
@@ -232,25 +232,25 @@ internal class CastControllerImpl @Inject constructor(
             if (connected && state != null && !loadInFlight && ReceiverQueue.isEnded(state)) {
                 // The receiver's queue is over (finished, stopped or failed): an appended item would never play,
                 // so play it now. This resumes it, sends the pending queue along and starts the casting service.
-                val request = CastRequest.Remote(video, variant = null, subtitle = null, direct = false, startPositionMs = null)
+                val request = CastRequest.Remote(video, variant, subtitle = null, direct = false, startPositionMs = null)
                 return@withContext detached { execute(request) }
             }
             if (!connected || state == null) {
                 _pendingQueue.update { queue ->
-                    val item = PendingQueueItem(PendingQueue.newKey(video, System.currentTimeMillis(), queue), video)
+                    val item = PendingQueueItem(PendingQueue.newKey(video, System.currentTimeMillis(), queue), video, variant)
                     PendingQueue.add(queue, item, playNext)
                 }
                 _events.tryEmit(CastEvent.Queued(video.displayTitle))
                 return@withContext CastResult.Success
             }
-            detached { appendToReceiver(video, playNext) }
+            detached { appendToReceiver(video, variant, playNext) }
         }
 
     /** Appends [video] to (or, with [playNext], inserts it into) the receiver's queue. */
-    private suspend fun appendToReceiver(video: DetectedVideo, playNext: Boolean): CastResult {
+    private suspend fun appendToReceiver(video: DetectedVideo, variant: VideoVariant?, playNext: Boolean): CastResult {
         proxyManager.acquire()
         try {
-            val media = buildRemote(video, variant = null, subtitle = null, direct = false)
+            val media = buildRemote(video, variant, subtitle = null, direct = false)
             if (video.isPrivate) privateUrls += video.url
             // The service keeps the proxy alive for the new item: it may have stopped itself after the previous
             // item ended, and appendToQueue / insertNext load the item when the receiver holds no media.
@@ -505,7 +505,7 @@ internal class CastControllerImpl @Inject constructor(
         for (item in _pendingQueue.value) {
             if (item.video.isDrmProtected) continue
             try {
-                built += item to buildRemote(item.video, variant = null, subtitle = null, direct = false)
+                built += item to buildRemote(item.video, item.variant, subtitle = null, direct = false)
             } catch (failure: CastFailure) {
                 Log.w(TAG, "Skipping queued video: ${failure.message}")
                 failures?.add(failure)

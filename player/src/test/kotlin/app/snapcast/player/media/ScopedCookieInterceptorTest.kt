@@ -18,8 +18,23 @@ class ScopedCookieInterceptorTest {
 
     @Test
     fun originCookieGoesOnlyToTheHostOfThePlayedUrl() {
-        assertThat(interceptor.cookieFor("site.com")).isEqualTo("session=abc")
-        assertThat(interceptor.cookieFor("SITE.COM.")).isEqualTo("session=abc")
+        // The tab's per-host cookies for the same host are merged in (newer value per name).
+        assertThat(interceptor.cookieFor("site.com")).isEqualTo("session=abc; fallback=1")
+        assertThat(interceptor.cookieFor("SITE.COM.")).isEqualTo("session=abc; fallback=1")
+    }
+
+    @Test
+    fun perHostValueWinsForTheSameCookieName() {
+        val newer = ScopedCookieInterceptor("https://site.com/v.m3u8", "token=old; a=1", mapOf("site.com" to "token=new"))
+        assertThat(newer.cookieFor("site.com")).isEqualTo("token=new; a=1")
+    }
+
+    @Test
+    fun authorizationGoesOnlyToTheHostOfThePlayedUrl() {
+        val withAuth = ScopedCookieInterceptor("https://api.site.com/m.m3u8", null, emptyMap(), authorization = "Bearer t")
+        assertThat(withAuth.authorizationFor("API.site.com")).isEqualTo("Bearer t")
+        assertThat(withAuth.authorizationFor("cdn.site.com")).isNull()
+        assertThat(interceptor.authorizationFor("site.com")).isNull()
     }
 
     @Test

@@ -150,6 +150,21 @@ class HlsParserTest {
     }
 
     @Test
+    fun `an alternate language with its own playlist does not make muxed audio separate`() {
+        val text = """
+            #EXTM3U
+            #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES
+            #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Français",LANGUAGE="fr",AUTOSELECT=YES,URI="fr/audio.m3u8"
+            #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,AUDIO="aud"
+            v1080.m3u8
+            #EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360,AUDIO="aud"
+            v360.m3u8
+        """.trimIndent()
+        val playlist = assertIs<HlsPlaylist.Master>(HlsParser.parse(text, "https://e.com/m.m3u8"))
+        assertThat(HlsParser.videoVariants(playlist).map { it.separateAudio }).containsExactly(false, false)
+    }
+
+    @Test
     fun `videoVariants are best first and de-duplicated by resolution and bandwidth`() {
         val text = """
             #EXTM3U

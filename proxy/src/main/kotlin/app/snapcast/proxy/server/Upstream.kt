@@ -1,6 +1,8 @@
 package app.snapcast.proxy.server
 
+import app.snapcast.core.util.CookieHeaders
 import okhttp3.Call
+import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.Headers
 import okhttp3.HttpUrl
@@ -18,6 +20,10 @@ import java.util.concurrent.ConcurrentHashMap
  * go to every host; the Cookie header only to the original host, and per-host cookies only to their host.
  * Authorization, like Cookie, goes only to the original host (and never after a redirect to another host), so a
  * playlist naming segments, keys or ads on third-party hosts does not hand them the site's credentials.
+ *
+ * Cookies the upstream sets while this registration is used (Set-Cookie on a playlist, key or redirect, e.g. a
+ * CDN session token) are kept in memory and sent back where they apply, as the browser would; per name, the
+ * newest value wins (captured request cookie, then the tab's newer per-host cookie, then a received one).
  */
 internal class HeaderPolicy(
     headers: Map<String, String>,
@@ -55,10 +61,36 @@ internal class HeaderPolicy(
         authorization = capturedAuthorization
     }
 
-    /** Cookie header for a request to [host], or null when none may be sent there. */
+    /** Received cookies, guarded by itself; never written to disk and gone with the registration. */
+    private val sessionCookies = ArrayList<Cookie>()
+
+    /** Captured Cookie header for a request to [host], or null when none may be sent there. */
     fun cookieFor(host: String): String? {
         val normalized = normalizeHost(host)
-        return if (normalized == originHost) cookie ?: cookiesByHost[normalized] else cookiesByHost[normalized]
+        return if (normalized == originHost) CookieHeaders.merge(cookie, cookiesByHost[normalized]) else cookiesByHost[normalized]
+    }
+
+    /** Cookie header for a request to [url]: the captured cookies for its host plus the received ones that match. */
+    fun cookieFor(url: HttpUrl): String? = CookieHeaders.merge(cookieFor(url.host), receivedCookies(url))
+
+    /** Keeps the cookies an upstream response to [url] set (expired ones remove earlier values). */
+    fun rememberCookies(url: HttpUrl, headers: Headers) {
+        val received = Cookie.parseAll(url, headers)
+        if (received.isEmpty()) return
+        val now = System.currentTimeMillis()
+        synchronized(sessionCookies) {
+            for (cookie in received) {
+                sessionCookies.removeAll { it.name == cookie.name && it.domain == cookie.domain && it.path == cookie.path }
+                if (cookie.expiresAt > now) sessionCookies += cookie
+            }
+            while (sessionCookies.size > MAX_SESSION_COOKIES) sessionCookies.removeAt(0)
+        }
+    }
+
+    private fun receivedCookies(url: HttpUrl): String? {
+        val now = System.currentTimeMillis()
+        val matching = synchronized(sessionCookies) { sessionCookies.filter { it.expiresAt > now && it.matches(url) } }
+        return matching.joinToString("; ") { "${it.name}=${it.value}" }.takeIf { it.isNotEmpty() }
     }
 
     /**
@@ -72,7 +104,7 @@ internal class HeaderPolicy(
         if (!dropAuthorization && authorization != null && normalizeHost(url.host) == originHost) {
             addLenient(builder, "Authorization", authorization)
         }
-        cookieFor(url.host)?.let { addLenient(builder, "Cookie", it) }
+        cookieFor(url)?.let { addLenient(builder, "Cookie", it) }
         return builder.build()
     }
 
@@ -86,6 +118,8 @@ internal class HeaderPolicy(
     }
 
     companion object {
+        private const val MAX_SESSION_COOKIES = 50
+
         /** Hop-by-hop, framing, conditional and content-negotiation headers the proxy controls itself. */
         private val NOT_REPLAYED = setOf(
             "host", "connection", "keep-alive", "proxy-connection", "proxy-authorization", "te", "trailer",
@@ -117,8 +151,9 @@ internal class UpstreamResponse(val response: Response, private val onClose: () 
 
 /**
  * Executes upstream requests with OkHttp. Redirects are followed here rather than by OkHttp so the Cookie header
- * is re-evaluated for every host; OkHttp's cookie jar and cache are disabled (the proxy forwards exactly what the
- * browser captured and must never store media). In-flight calls are tracked so [cancelAll] can abort them.
+ * is re-evaluated for every host, and every response's Set-Cookie is handed to the registration's [HeaderPolicy]
+ * (OkHttp's own cookie jar and cache stay disabled: the proxy never stores media or cookies on disk). In-flight
+ * calls are tracked so [cancelAll] can abort them.
  */
 internal class UpstreamClient(client: OkHttpClient) {
     private val http: OkHttpClient = client.newBuilder()
@@ -153,6 +188,7 @@ internal class UpstreamClient(client: OkHttpClient) {
                 calls -= call
                 throw e
             }
+            policy.rememberCookies(response.request.url, response.headers)
             val location = response.header("Location")
             val next = if (response.code in REDIRECT_CODES && location != null && hop < MAX_REDIRECTS) {
                 response.request.url.resolve(location)

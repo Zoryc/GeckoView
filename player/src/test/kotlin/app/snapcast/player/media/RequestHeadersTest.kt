@@ -32,7 +32,9 @@ class RequestHeadersTest {
 
         assertThat(headers.cookie).isEqualTo("session=abc")
         assertThat(headers.properties.keys.map { it.lowercase() }).doesNotContain("cookie")
-        assertThat(headers.properties).containsExactly("Authorization", "Bearer token")
+        // Authorization, like the Cookie, is kept apart: it may only reach the played URL's host.
+        assertThat(headers.authorization).isEqualTo("Bearer token")
+        assertThat(headers.properties).isEmpty()
     }
 
     @Test
@@ -79,11 +81,11 @@ class RequestHeadersTest {
                 "content-length" to "0",
                 "If-None-Match" to "\"etag\"",
                 ":authority" to "cdn.example",
-                "Authorization" to "Bearer token",
+                "Accept" to "*/*",
             ),
         )
 
-        assertThat(headers.properties).containsExactly("Authorization", "Bearer token")
+        assertThat(headers.properties).containsExactly("Accept", "*/*")
     }
 
     @Test

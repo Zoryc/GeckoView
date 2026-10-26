@@ -1,14 +1,20 @@
 package app.snapcast.player
 
 import android.content.Context
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import app.snapcast.data.playback.PlaybackPositionRepository
+import app.snapcast.core.util.UrlUtils
 import app.snapcast.player.error.PlaybackErrorMessages
+import app.snapcast.player.error.PlayerErrorKind
 import app.snapcast.player.error.PlayerErrorUi
 import app.snapcast.player.media.PlayerFactory
+import app.snapcast.player.media.QualityMatch
 import app.snapcast.player.resume.PositionWriter
 import app.snapcast.player.resume.StartPosition
 import kotlinx.coroutines.CancellationException
@@ -60,6 +66,9 @@ internal class PlaybackController(
     private var saveJob: Job? = null
     private var liveEdgeRecoveries = 0
 
+    /** The picked quality still has to be applied (once the stream's renditions are known). */
+    private var qualityPending = false
+
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _state.update { it.copy(isPlaying = isPlaying) }
@@ -88,6 +97,10 @@ internal class PlaybackController(
         override fun onVideoSizeChanged(videoSize: VideoSize) {
             onPlaybackChanged()
         }
+
+        override fun onTracksChanged(tracks: Tracks) {
+            if (qualityPending) applyQuality(tracks)
+        }
     }
 
     /**
@@ -98,6 +111,7 @@ internal class PlaybackController(
         release()
         this.request = request
         liveEdgeRecoveries = 0
+        qualityPending = request.quality != null
         _state.value = PlaybackUiState(title = request.title)
         val player = playerFactory.createPlayer(context, request)
         player.addListener(listener)
@@ -205,10 +219,30 @@ internal class PlaybackController(
             player.prepare()
             return
         }
-        _state.update {
-            it.copy(error = PlaybackErrorMessages.describe(context.resources, error), resumedAtMs = null)
-        }
+        val described = PlaybackErrorMessages.describe(context.resources, error)
+        // A refused or vanished link usually expired: reloading the page it came from gets a fresh one.
+        val pageUrl = request?.pageUrl
+        val canReload = pageUrl != null && UrlUtils.isHttp(pageUrl) &&
+            (described.kind == PlayerErrorKind.HTTP_FORBIDDEN || described.kind == PlayerErrorKind.HTTP_NOT_FOUND)
+        _state.update { it.copy(error = described.copy(canReloadPage = canReload), resumedAtMs = null) }
         onPlaybackChanged()
+    }
+
+    /** Pins the video rendition closest to the picked quality, once; the player adapts again if none matches. */
+    private fun applyQuality(tracks: Tracks) {
+        val player = _player.value ?: return
+        val wanted = request?.quality ?: return
+        val group = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO } ?: return
+        qualityPending = false
+        val supported = (0 until group.length).filter { group.isTrackSupported(it) }
+        val renditions = supported.map { index ->
+            val format = group.getTrackFormat(index)
+            QualityMatch.Rendition(format.width, format.height, format.bitrate)
+        }
+        val choice = QualityMatch.pick(renditions, wanted) ?: return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, supported[choice]))
+            .build()
     }
 
     private suspend fun savedPositionOf(url: String): Long? = try {

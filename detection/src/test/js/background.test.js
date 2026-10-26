@@ -203,7 +203,7 @@ test('network reports are buffered until the top frame says hello, then handed o
       resourceType: 'media',
       frameUrl: PAGE,
       pageUrl: PAGE,
-      requestHeaders: { Referer: PAGE, 'User-Agent': 'UA', Cookie: 'sid=1', Authorization: 'Bearer x' },
+      requestHeaders: { Referer: PAGE, 'User-Agent': 'UA', Cookie: 'sid=1', Authorization: 'Bearer x', Accept: '*/*' },
       cookiesByHost: { 'cdn.example': 'sid=1' },
       timestamp: 1000,
     }],
@@ -443,6 +443,27 @@ test('a rescan request is broadcast to every frame of the tab', () => {
   const { bg, browser } = setup();
   bg.onRuntimeMessage({ kind: 'snapcast-rescan-all' }, { tab: { id: TAB }, frameId: 0 });
   assert.deepEqual(browser.sent, [{ tabId: TAB, message: { kind: 'snapcast-rescan' }, options: undefined }]);
+});
+
+test('a thumbnails request is broadcast to every frame of the tab', () => {
+  const { bg, browser } = setup();
+  bg.onRuntimeMessage({ kind: 'snapcast-thumbnails-all' }, { tab: { id: TAB }, frameId: 0 });
+  assert.deepEqual(browser.sent, [{ tabId: TAB, message: { kind: 'snapcast-thumbnails' }, options: undefined }]);
+});
+
+test('the cookie map keeps the most recently used hosts', () => {
+  const { bg } = setup();
+  const send = (host, cookie) => bg.onSendHeaders({
+    requestId: host, tabId: TAB, type: 'xmlhttprequest', url: `https://${host}/x`, requestHeaders: [{ name: 'Cookie', value: cookie }],
+  });
+  for (let i = 0; i < 48; i++) send(`ad${i}.example`, `id=${i}`);
+  send('ad0.example', 'id=0');
+  send('media.example', 'sess=1');
+  const hosts = [...bg.tabs.get(TAB).cookies.keys()];
+  assert.equal(hosts.length, 48);
+  assert.ok(hosts.includes('media.example'));
+  assert.ok(hosts.includes('ad0.example'));
+  assert.ok(!hosts.includes('ad1.example'));
 });
 
 test('cookies seen later on segment hosts refresh the last playlist report', async () => {

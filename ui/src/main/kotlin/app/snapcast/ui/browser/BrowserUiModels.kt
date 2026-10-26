@@ -4,6 +4,7 @@ import app.snapcast.browser.BrowserEvent
 import app.snapcast.cast.CastEvent
 import app.snapcast.cast.CastResult
 import app.snapcast.core.model.DetectedVideo
+import app.snapcast.core.model.VideoVariant
 
 /** Long-press menu on page content; [video] is set when the element is a castable video. */
 data class ContextMenuState(
@@ -24,4 +25,13 @@ sealed interface BrowserUiEvent {
 
     /** A link opened in a background tab; the snackbar offers to switch to it. */
     data class OpenedInBackground(val tabId: String, val isPrivate: Boolean) : BrowserUiEvent
+
+    /** The player's link was refused: the page is being reloaded to play the video again with a fresh link. */
+    data object ReloadingForReplay : BrowserUiEvent
+
+    /** The reloaded page showed the video again: play it (at the quality picked before, if any). */
+    data class PlayOnPhone(val video: DetectedVideo, val variant: VideoVariant?) : BrowserUiEvent
+
+    /** The reloaded page did not show the same video again in time: the user picks it in the list. */
+    data object ReplayNotFound : BrowserUiEvent
 }

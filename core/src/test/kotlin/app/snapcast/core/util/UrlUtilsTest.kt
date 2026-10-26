@@ -219,4 +219,33 @@ class UrlUtilsTest {
         assertThat(UrlUtils.isHttp("blob:https://e.com/x")).isFalse()
         assertThat(UrlUtils.isHttp("data:video/mp4,x")).isFalse()
     }
+
+    @Test
+    fun `referrer follows the browser's default policy`() {
+        val page = "https://Site.example.com/watch/1?ep=2#comments"
+        assertThat(UrlUtils.referrerFor(page, "https://site.example.com/og.jpg")).isEqualTo("https://site.example.com/watch/1?ep=2")
+        assertThat(UrlUtils.referrerFor(page, "https://img.example.org/og.jpg")).isEqualTo("https://site.example.com/")
+        assertThat(UrlUtils.referrerFor(page, "http://site.example.com/og.jpg")).isNull()
+        assertThat(UrlUtils.referrerFor("http://a.example:8080/p", "http://a.example:8080/x")).isEqualTo("http://a.example:8080/p")
+        assertThat(UrlUtils.referrerFor("http://a.example:8080/p", "http://b.example:8080/x")).isEqualTo("http://a.example:8080/")
+        assertThat(UrlUtils.referrerFor("https://user:pw@a.example/p", "https://a.example/x")).isEqualTo("https://a.example/p")
+        assertThat(UrlUtils.referrerFor("https://a.example:443", "https://a.example/x")).isEqualTo("https://a.example/")
+        assertThat(UrlUtils.referrerFor("http://[::1]:8000/p", "http://cdn.example/x")).isEqualTo("http://[::1]:8000/")
+        assertThat(UrlUtils.referrerFor("about:blank", "https://a.example/x")).isNull()
+    }
+
+    @Test
+    fun `cookie headers merge by name with the later value winning`() {
+        assertThat(CookieHeaders.merge("a=1; b=2", null, "b=3;c=4", "")).isEqualTo("a=1; b=3; c=4")
+        assertThat(CookieHeaders.merge("token=x=y; flag")).isEqualTo("token=x=y; flag")
+        assertThat(CookieHeaders.merge(null, " ")).isNull()
+    }
+
+    @Test
+    fun `bounded cookies keep the stream's host, then the newest hosts that fit`() {
+        val cookies = linkedMapOf("old.ads" to "x".repeat(50), "cdn.example" to "a=1", "new.ads" to "y".repeat(20), "seg.example" to "s=2")
+        val kept = CookieHeaders.bounded(cookies, listOf("CDN.example"), maxChars = 60)
+        assertThat(kept.keys).containsExactly("cdn.example", "seg.example", "new.ads").inOrder()
+        assertThat(CookieHeaders.bounded(cookies, emptyList(), maxChars = 1_000)).hasSize(4)
+    }
 }

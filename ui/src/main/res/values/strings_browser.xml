@@ -66,7 +66,11 @@
     <string name="ui_video_cast_direct_hint">This site needs cookies or a referer, so casting directly may fail.</string>
     <string name="ui_video_choose_quality">Choose quality</string>
     <string name="ui_video_subtitles">Cast with subtitles</string>
-    <string name="ui_video_quality_title">Quality to cast</string>
+    <string name="ui_video_quality_title">Quality</string>
+    <string name="ui_video_quality_auto">Automatic</string>
+    <string name="ui_video_quality_auto_details">Adapts to the connection, up to %1$s</string>
+    <!-- Chip of an adaptive stream: the best quality its player can switch up to, e.g. "Up to 1080p". -->
+    <string name="ui_video_quality_up_to">Up to %1$s</string>
     <string name="ui_video_subtitles_title">Subtitles</string>
     <string name="ui_video_subtitle_track">Track %1$d</string>
     <string name="ui_video_clip_label">Video link</string>
@@ -117,6 +121,8 @@
     <string name="ui_event_opened_tab">Opened in a new tab</string>
     <string name="ui_event_opened_private_tab">Opened in a new private tab</string>
     <string name="ui_event_switch">Switch</string>
+    <string name="ui_event_reloading_for_replay">Reloading the page to get a fresh link…</string>
+    <string name="ui_event_replay_not_found">The video didn\'t come back after the reload. Start it on the page, then pick it in the video list.</string>
     <string name="ui_event_download_started">Downloading %1$s…</string>
     <string name="ui_event_download_finished">Downloaded %1$s</string>
     <string name="ui_event_download_failed">Download of %1$s failed: %2$s</string>

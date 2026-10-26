@@ -4,8 +4,8 @@ import java.util.Locale
 
 /**
  * Captured browser headers prepared for Media3's OkHttp data source: the User-Agent goes to
- * `setUserAgent`, the Cookie to [ScopedCookieInterceptor] (it may only reach the host it was captured
- * for), everything else to `setDefaultRequestProperties`.
+ * `setUserAgent`, the Cookie and Authorization to [ScopedCookieInterceptor] (they may only reach the host
+ * they were captured for), everything else to `setDefaultRequestProperties`.
  *
  * Headers the data source or OkHttp manage per request (Range, Host, Accept-Encoding, hop-by-hop and
  * conditional headers) are dropped so they are never sent twice, and so are names/values OkHttp would
@@ -16,12 +16,15 @@ internal data class RequestHeaders(
     val properties: Map<String, String>,
     /** Cookie captured on the request for the played URL; never part of [properties]. */
     val cookie: String? = null,
+    /** Authorization captured on the request for the played URL; never part of [properties]. */
+    val authorization: String? = null,
 ) {
     companion object {
         /** Splits [headers]; names are matched case-insensitively and a later duplicate replaces an earlier one. */
         fun from(headers: Map<String, String>): RequestHeaders {
             var userAgent: String? = null
             var cookie: String? = null
+            var authorization: String? = null
             val byLowerName = LinkedHashMap<String, Pair<String, String>>()
             for ((rawName, rawValue) in headers) {
                 val name = rawName.trim()
@@ -31,13 +34,14 @@ internal data class RequestHeaders(
                 when (lower) {
                     USER_AGENT -> userAgent = value
                     COOKIE -> cookie = value
+                    AUTHORIZATION -> authorization = value
                     in MANAGED_HEADERS -> Unit
                     else -> byLowerName[lower] = name to value
                 }
             }
             val properties = LinkedHashMap<String, String>(byLowerName.size)
             byLowerName.values.forEach { (name, value) -> properties[name] = value }
-            return RequestHeaders(userAgent, properties, cookie)
+            return RequestHeaders(userAgent, properties, cookie, authorization)
         }
 
         /**
@@ -69,6 +73,7 @@ internal data class RequestHeaders(
 
         private const val USER_AGENT = "user-agent"
         private const val COOKIE = "cookie"
+        private const val AUTHORIZATION = "authorization"
 
         private val MANAGED_HEADERS = setOf(
             "host",

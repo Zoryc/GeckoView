@@ -58,6 +58,9 @@ class PlayerActivity : ComponentActivity() {
     @field:ApplicationScope
     lateinit var applicationScope: CoroutineScope
 
+    @Inject
+    lateinit var playerLauncher: PlayerLauncher
+
     // Null when the activity finished in onCreate because the launch intent had no usable request.
     private var playback: PlaybackController? = null
     private var positionWriter: PositionWriter? = null
@@ -227,6 +230,13 @@ class PlayerActivity : ComponentActivity() {
 
         override fun onRetry() {
             playback?.retry()
+        }
+
+        override fun onReloadPage() {
+            // The browser (underneath, same process) reloads the page and plays the video again from it.
+            val request = playback?.request ?: return
+            (playerLauncher as? PlayerLauncherImpl)?.requestReload(request)
+            finish()
         }
     }
 

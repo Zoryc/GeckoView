@@ -10,6 +10,8 @@ internal data class PlayerErrorUi(
     val kind: PlayerErrorKind,
     val message: String,
     val detail: String,
+    /** The link was refused or is gone and the page it came from is known: offer to reload it and play again. */
+    val canReloadPage: Boolean = false,
 ) {
     /** Retrying cannot help with protected content or a format the device's player doesn't handle. */
     val canRetry: Boolean

@@ -2,12 +2,14 @@ package app.snapcast.ui.video
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GppBad
 import androidx.compose.material.icons.filled.WifiOff
@@ -17,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -82,19 +85,31 @@ fun CastErrorDialog(kind: CastErrorKind, message: String, onDismiss: () -> Unit)
     )
 }
 
-/** Picks one quality (HLS variant) to cast. */
+/**
+ * Picks the quality (HLS variant) Cast, Play on phone and the queue use for [video]; null is "Automatic" (the
+ * player or receiver adapts to the connection and screen). [picked] is checked.
+ */
 @Composable
-fun QualityDialog(video: DetectedVideo, onPick: (VideoVariant) -> Unit, onDismiss: () -> Unit) {
+fun QualityDialog(video: DetectedVideo, picked: VideoVariant?, onPick: (VideoVariant?) -> Unit, onDismiss: () -> Unit) {
     val choices = VideoLabels.qualityChoices(video)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.ui_video_quality_title)) },
         text = {
             LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                item {
+                    ChoiceRow(
+                        title = stringResource(R.string.ui_video_quality_auto),
+                        subtitle = video.qualityLabel?.let { stringResource(R.string.ui_video_quality_auto_details, it) },
+                        selected = picked == null,
+                        onClick = { onPick(null) },
+                    )
+                }
                 items(choices) { variant ->
                     ChoiceRow(
                         title = variant.qualityLabel,
                         subtitle = VideoLabels.variantDetails(variant),
+                        selected = variant.url == picked?.url,
                         onClick = { onPick(variant) },
                     )
                 }
@@ -137,16 +152,22 @@ private fun subtitleLabel(track: SubtitleTrack, index: Int): String =
         ?: stringResource(R.string.ui_video_subtitle_track, index + 1)
 
 @Composable
-private fun ChoiceRow(title: String, subtitle: String?, onClick: () -> Unit) {
-    Column(
+private fun ChoiceRow(title: String, subtitle: String?, onClick: () -> Unit, selected: Boolean = false) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.bodyLarge)
-        if (subtitle != null) {
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (selected) {
+            Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         }
     }
 }

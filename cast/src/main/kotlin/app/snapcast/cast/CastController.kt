@@ -47,10 +47,11 @@ sealed interface CastEvent {
     data object SessionEnded : CastEvent
 }
 
-/** Item waiting in the app-side queue while nothing is casting. */
+/** Item waiting in the app-side queue while nothing is casting; [variant] is the quality picked for it, if any. */
 data class PendingQueueItem(
     val key: String,
     val video: DetectedVideo,
+    val variant: VideoVariant? = null,
 )
 
 /** UI-facing facade over the active [CastTarget], the local proxy and the casting foreground service. */
@@ -80,8 +81,11 @@ interface CastController {
         startPositionMs: Long? = null,
     ): CastResult
 
-    /** Appends to the receiver queue when casting, otherwise to [pendingQueue]. [playNext] inserts after the current item. */
-    suspend fun addToQueue(video: DetectedVideo, playNext: Boolean = false): CastResult
+    /**
+     * Appends to the receiver queue when casting, otherwise to [pendingQueue]. [variant] is the picked quality (as
+     * in [cast]); [playNext] inserts after the current item.
+     */
+    suspend fun addToQueue(video: DetectedVideo, variant: VideoVariant? = null, playNext: Boolean = false): CastResult
 
     /**
      * Casts [pendingQueue] in order. Items leave the pending queue only once the receiver has loaded them;

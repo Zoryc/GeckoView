@@ -1,6 +1,7 @@
 package app.snapcast.core.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /** Container / delivery format of a detected stream. */
 @Serializable
@@ -78,8 +79,9 @@ data class VideoVariant(
     /** Human label such as "1080p", "720p · 60fps" or "2.5 Mbps". */
     val qualityLabel: String
         get() {
+            val resolution = VideoResolution.label(width, height)
             val base = when {
-                height != null && height > 0 -> "${height}p"
+                resolution != null -> resolution
                 name != null -> name
                 bandwidth != null && bandwidth > 0 -> formatBitrate(bandwidth)
                 else -> "Auto"
@@ -158,6 +160,16 @@ data class DetectedVideo(
     val width: Int? = null,
     val height: Int? = null,
     val posterUrl: String? = null,
+    /**
+     * Referer to send when fetching [posterUrl]: what the browser sent from the document that showed the
+     * image (the player's frame for an element poster, the page for og:image). Null when none should be sent.
+     */
+    val posterReferer: String? = null,
+    /**
+     * A frame of the video captured in the page on request (a small `data:image/jpeg;base64,` URL), shown
+     * when there is no poster or it cannot be loaded. Never sent anywhere.
+     */
+    @Transient val frameThumbnail: String? = null,
     val variants: List<VideoVariant> = emptyList(),
     val subtitles: List<SubtitleTrack> = emptyList(),
     val isLive: Boolean = false,
@@ -182,8 +194,50 @@ data class DetectedVideo(
     val sourceDomain: String
         get() = app.snapcast.core.util.UrlUtils.hostOf(url)?.removePrefix("www.") ?: ""
 
-    /** Best known quality label: tallest variant for adaptive streams, element size otherwise. */
+    /**
+     * Best quality label: for adaptive streams the best variant (see [hasQualityRange]), null while the
+     * variants are unknown; the file's own size otherwise. The page player's size is never used for an
+     * adaptive stream: it is only the rendition that player happens to be decoding.
+     */
     val qualityLabel: String?
-        get() = variants.maxByOrNull { it.height ?: 0 }?.takeIf { it.height != null }?.qualityLabel
-            ?: height?.takeIf { it > 0 }?.let { "${it}p" }
+        get() = if (type.isAdaptive) bestVariant?.qualityLabel else VideoResolution.label(width, height)
+
+    /**
+     * True when an adaptive stream offers several qualities: players and receivers switch between them
+     * on their own, so [qualityLabel] is the best one they can reach, not a fixed quality.
+     */
+    val hasQualityRange: Boolean
+        get() = type.isAdaptive && variants.filter { it.isDescribed }.distinctBy { it.qualityLabel }.size > 1
+
+    private val bestVariant: VideoVariant?
+        get() = variants.filter { it.isDescribed }.maxWithOrNull(
+            compareBy<VideoVariant>({ VideoResolution.classOf(it.width, it.height) ?: 0 }, { it.bandwidth ?: 0L }),
+        )
+}
+
+/** Variant that [VideoVariant.qualityLabel] can describe by more than "Auto". */
+private val VideoVariant.isDescribed: Boolean
+    get() = VideoResolution.classOf(width, height) != null || (bandwidth ?: 0L) > 0L || name != null
+
+/** Resolution classes ("1080p") from a frame size, whatever the orientation or aspect ratio. */
+object VideoResolution {
+    private val CLASSES = intArrayOf(4320, 2160, 1440, 1080, 720, 576, 480, 360, 240, 144)
+
+    /**
+     * The usual name of a [width] x [height] frame: the height a 16:9 landscape frame with the same detail
+     * would have, snapped to a standard class when within 6 %. 1920x1080, 1920x800 (scope) and 1080x1920
+     * (portrait) are all 1080; a frame with only a height known uses that height.
+     */
+    fun classOf(width: Int?, height: Int?): Int? {
+        val w = width?.takeIf { it > 0 }
+        val h = height?.takeIf { it > 0 }
+        val lines = when {
+            w != null && h != null -> maxOf(minOf(w, h), maxOf(w, h) * 9 / 16)
+            h != null -> h
+            else -> return null
+        }
+        return CLASSES.firstOrNull { kotlin.math.abs(lines - it) <= it * 6 / 100 } ?: lines
+    }
+
+    fun label(width: Int?, height: Int?): String? = classOf(width, height)?.let { "${it}p" }
 }

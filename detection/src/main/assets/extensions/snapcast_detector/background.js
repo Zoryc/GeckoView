@@ -3,7 +3,8 @@
  *
  * Watches every tab's network traffic with webRequest:
  *  - onSendHeaders keeps the request headers worth replaying (Referer, User-Agent, Origin, Cookie,
- *    Authorization) by requestId, and the Cookie header per (tab, host);
+ *    Authorization, Accept, Accept-Language) by requestId, and the Cookie header per (tab, host), keeping
+ *    the most recently used hosts;
  *  - onHeadersReceived classifies responses by URL and Content-Type, drops segments and non-media and
  *    turns the rest into MediaReports (see app.snapcast.core.detection.DetectorProtocol).
  *
@@ -18,7 +19,7 @@
 
   const C = root.SnapcastClassify || (typeof require === 'function' ? require('./classify.js') : null);
 
-  const CAPTURED_HEADERS = ['Referer', 'User-Agent', 'Origin', 'Cookie', 'Authorization'];
+  const CAPTURED_HEADERS = ['Referer', 'User-Agent', 'Origin', 'Cookie', 'Authorization', 'Accept', 'Accept-Language'];
   /** Resource types that can carry media; images, scripts, styles and fonts are never looked at. */
   const RESOURCE_TYPES = ['main_frame', 'sub_frame', 'media', 'xmlhttprequest', 'object', 'other'];
 
@@ -162,13 +163,15 @@
       }
     }
 
+    /** Keeps the newest Cookie header per host; past maxCookieHosts the least recently used host is dropped. */
     function rememberCookie(tab, host, cookie) {
       if (!host || !isString(cookie)) return;
       const value = cookie.length > opts.maxCookieLength ? cookie.substring(0, opts.maxCookieLength) : cookie;
-      if (tab.cookies.get(host) === value) return;
-      if (!tab.cookies.has(host) && tab.cookies.size >= opts.maxCookieHosts) return;
+      const changed = tab.cookies.get(host) !== value;
+      tab.cookies.delete(host);
       tab.cookies.set(host, value);
-      tab.cookiesChanged = true;
+      while (tab.cookies.size > opts.maxCookieHosts) tab.cookies.delete(tab.cookies.keys().next().value);
+      if (changed) tab.cookiesChanged = true;
     }
 
     function cookiesOf(tab) {
@@ -388,9 +391,10 @@
       }
     }
 
-    function broadcastRescan(tabId) {
+    /** Sends [kind] to every frame of the tab. */
+    function broadcast(tabId, kind) {
       try {
-        Promise.resolve(browser.tabs.sendMessage(tabId, { kind: C.MESSAGE.RESCAN })).then(noop, noop);
+        Promise.resolve(browser.tabs.sendMessage(tabId, { kind })).then(noop, noop);
       } catch (ignored) {
         // A detector failure must never disturb browsing.
       }
@@ -412,7 +416,10 @@
             onFrameReport(tabId, sender, message.message);
             return undefined;
           case C.MESSAGE.RESCAN_ALL:
-            broadcastRescan(tabId);
+            broadcast(tabId, C.MESSAGE.RESCAN);
+            return undefined;
+          case C.MESSAGE.THUMBNAILS_ALL:
+            broadcast(tabId, C.MESSAGE.THUMBNAILS);
             return undefined;
           default:
             return undefined;

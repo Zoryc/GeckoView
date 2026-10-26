@@ -26,7 +26,7 @@ class VideoLabelsTest {
 
     @Test
     fun `all known metadata in display order`() {
-        val v = video(type = StreamType.HLS).copy(
+        val v = video(type = StreamType.MP4).copy(
             variants = listOf(
                 VideoVariant(url = "https://cdn.example.com/720.m3u8", height = 720, bandwidth = 2_000_000),
                 VideoVariant(url = "https://cdn.example.com/1080.m3u8", height = 1080, bandwidth = 5_000_000),
@@ -36,7 +36,7 @@ class VideoLabelsTest {
             subtitles = listOf(SubtitleTrack(id = "s", url = "https://cdn.example.com/en.vtt")),
             drm = DrmInfo(reason = "EME request"),
         )
-        val chips = VideoLabels.chips(v)
+        val chips = VideoLabels.chips(v.copy(width = 1920, height = 1080))
         assertThat(chips.map { it.kind }).containsExactly(
             VideoChipKind.TYPE,
             VideoChipKind.QUALITY,
@@ -46,10 +46,35 @@ class VideoLabelsTest {
             VideoChipKind.DOMAIN,
             VideoChipKind.DRM,
         ).inOrder()
-        assertThat(chips.first { it.kind == VideoChipKind.TYPE }.text).isEqualTo("HLS")
+        assertThat(chips.first { it.kind == VideoChipKind.TYPE }.text).isEqualTo("MP4")
         assertThat(chips.first { it.kind == VideoChipKind.QUALITY }.text).isEqualTo("1080p")
         assertThat(chips.first { it.kind == VideoChipKind.DURATION }.text).isEqualTo(Formatters.duration(125.0))
         assertThat(chips.first { it.kind == VideoChipKind.SIZE }.text).isEqualTo(Formatters.fileSize(3_000_000L))
+    }
+
+    @Test
+    fun `an adaptive stream with several qualities shows its best one as a range, never its playlist size`() {
+        val v = video(type = StreamType.HLS).copy(
+            variants = listOf(
+                VideoVariant(url = "https://cdn.example.com/720.m3u8", height = 720, bandwidth = 2_000_000),
+                VideoVariant(url = "https://cdn.example.com/1080.m3u8", height = 1080, bandwidth = 5_000_000),
+            ),
+            height = 360,
+            sizeBytes = 424L,
+        )
+        val chips = VideoLabels.chips(v)
+        assertThat(chips.map { it.kind }).containsExactly(VideoChipKind.TYPE, VideoChipKind.QUALITY_RANGE, VideoChipKind.DOMAIN).inOrder()
+        assertThat(chips[1].text).isEqualTo("1080p")
+        // A picked quality replaces the range.
+        val picked = VideoLabels.chips(v, picked = v.variants.first())
+        assertThat(picked[1]).isEqualTo(VideoChip(VideoChipKind.QUALITY, "720p"))
+    }
+
+    @Test
+    fun `an adaptive stream whose variants are not known yet shows no quality`() {
+        val chips = VideoLabels.chips(video(type = StreamType.HLS).copy(height = 360))
+        assertThat(chips.map { it.kind }).doesNotContain(VideoChipKind.QUALITY)
+        assertThat(chips.map { it.kind }).doesNotContain(VideoChipKind.QUALITY_RANGE)
     }
 
     @Test
