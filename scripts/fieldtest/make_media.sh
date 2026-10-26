@@ -30,3 +30,16 @@ ffmpeg -hide_banner -loglevel error -y -f lavfi -i "smptebars=size=640x360" -fra
 
 curl -fsSL -o "$OUT/hls.min.js" https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js
 ls -R "$OUT" | head -40
+
+# Coverage extras: a 2-second "ad" clip, a DASH version of the 720p rendition, and dash.js.
+ffmpeg -hide_banner -loglevel error -y \
+  -f lavfi -i "testsrc2=size=640x360:rate=25" -f lavfi -i "sine=frequency=880:sample_rate=44100" \
+  -t 2 -vf "$(label 640 360 'AD')" -c:v libx264 -preset veryfast -pix_fmt yuv420p -c:a aac -b:a 64k \
+  -movflags +faststart "$OUT/ad.mp4"
+mkdir -p "$OUT/dash"
+ffmpeg -hide_banner -loglevel error -y \
+  -f lavfi -i "testsrc2=size=1280x720:rate=25" -f lavfi -i "sine=frequency=440:sample_rate=44100" \
+  -t 24 -vf "$(label 1280 720 'DASH 720p')" -c:v libx264 -preset veryfast -pix_fmt yuv420p -g 50 -keyint_min 50 \
+  -sc_threshold 0 -c:a aac -b:a 96k -f dash -seg_duration 4 -use_template 1 -use_timeline 0 \
+  "$OUT/dash/manifest.mpd"
+curl -fsSL -o "$OUT/dash.all.min.js" https://cdn.jsdelivr.net/npm/dashjs@4.7.4/dist/dash.all.min.js
