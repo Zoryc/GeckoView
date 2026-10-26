@@ -228,8 +228,9 @@ internal class PlaybackController(
             (described.kind == PlayerErrorKind.HTTP_FORBIDDEN || described.kind == PlayerErrorKind.HTTP_NOT_FOUND)
         _state.update { it.copy(error = described.copy(canReloadPage = canReload), resumedAtMs = null) }
         if (request?.isPrivate == false) {
-            val http = described.httpStatus?.let { "HTTP $it from ${described.failedHost ?: UrlUtils.hostOf(request?.url.orEmpty())}" }
-            diagnostics?.record("player", listOfNotNull(described.kind.name, http, "(${described.detail})").joinToString(" "))
+            val what = described.httpStatus?.let { "HTTP $it from ${described.failedHost ?: UrlUtils.hostOf(request?.url.orEmpty())}" }
+                ?: described.kind.name
+            diagnostics?.record("player", "$what (${described.detail})")
         }
         onPlaybackChanged()
     }

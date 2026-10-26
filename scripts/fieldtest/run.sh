@@ -149,18 +149,31 @@ tap_below() { # anchor-text pattern
   log "no /$2/ below $1"; return 1
 }
 
-play_kind() { # type-chip (HLS, MP4, ...) step-name
+play_kind() { # type-chip (HLS, MP4, ...) step-name [keep: leave the player open]
   local center waited=0
   log "play on phone: $1 row"
   while (( waited < 20 )); do
     if center="$(find_below "$1" "^Play on phone$")"; then
       # shellcheck disable=SC2086
       adb shell input tap $center
-      watch_player "$2"; return 0
+      if [ "${3:-}" = "keep" ]; then
+        sleep 6
+        find_center "^Got it$" >/dev/null && tap "^Got it$" 5
+        shot "$2" 12; report "player $2"
+      else
+        watch_player "$2"
+      fi
+      return 0
     fi
     sleep 3; waited=$((waited + 3))
   done
   log "no $1 row with a Play on phone button"; return 1
+}
+
+reload_site() {
+  adb shell am start -W -a android.intent.action.VIEW -d "$SITE" -n "$ACTIVITY" >/dev/null
+  wait_for "Videos found on this page" 90 >/dev/null
+  sleep 8
 }
 
 open_list() {
@@ -190,6 +203,9 @@ mark 03-play-hls
 play_kind HLS 03-play-hls
 
 # Pick 360p for the HLS stream, then play it on the phone: the site log must show only 360p segments.
+# The page is loaded again first so its link is fresh (the test site's tokens last 120 s).
+log "reload for a fresh link"
+reload_site
 open_list
 if tap_below "HLS" "^More video options$" && tap "^Choose quality$" 10 && tap "^360p$" 10; then
   sleep 2; shot 04-quality-picked 1; report "list after picking 360p"
@@ -200,35 +216,41 @@ fi
 log "waiting for tokens to expire"
 sleep 130
 mark 06-play-hls-expired
-open_list; play_kind HLS 06-play-hls-expired
+open_list; play_kind HLS 06-play-hls-expired keep
 # The refused link offers to reload the page; the browser then plays the video again by itself.
 if find_center "^Reload page$" >/dev/null; then
+  log "Reload page offered"
   mark 07-reload-and-replay
   tap "^Reload page$" 5
   sleep 25
   shot 07-replayed 1
   report "player after reload and replay"
-  leave_player
+  if find_center "^Can.t play this video$" >/dev/null; then log "REPLAY FAILED: error shown again"; else log "replay: no error shown"; fi
 else
   log "no Reload page button"
 fi
+leave_player
 
-# Report a site problem: the preview must name the site and never contain a token or a cookie.
+# Report a site problem: the preview must name the site and never contain a link, token or cookie value.
 mark 08-report
-adb shell am start -W -n "$ACTIVITY" >/dev/null 2>&1; sleep 2
 if tap "^More options$" 10 && tap "^Report a site problem$" 10; then
   tap "^Won.t play$" 10; tap "^See what will be sent$" 10; sleep 2
   shot 08-report 1
   report "report preview"
-  if ui_text | grep -qiE "t=[0-9]|sess=ok|token"; then log "REPORT LEAK: token or cookie in the preview"; else log "report preview has no token or cookie"; fi
+  preview="$(ui_text | grep -F '### Site' || true)"
+  if [ -z "$preview" ]; then
+    log "report preview not found"
+  elif echo "$preview" | grep -qE 'https?://|[?&]t=|sess=ok|[0-9]{10}-[0-9a-f]{16}'; then
+    log "REPORT LEAK: $preview"
+  else
+    log "report preview has no link, token or cookie"
+  fi
   adb shell input keyevent KEYCODE_BACK; sleep 1
 fi
 
 log "reload page and retry"
 mark 09-reload
-adb shell am start -W -a android.intent.action.VIEW -d "$SITE" -n "$ACTIVITY" >/dev/null
-wait_for "Videos found on this page" 90 >/dev/null
-sleep 8
+reload_site
 open_list; shot 09-list-after-reload 3
 report "list after reload"
 log "done"
