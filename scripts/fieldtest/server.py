@@ -191,7 +191,7 @@ if (window.Hls && Hls.isSupported()) {{
                     return self._send(200, ("\n".join(out) + "\n").encode(), "application/vnd.apple.mpegurl", cors)
                 return self._file(full, "video/mp2t", cors)
 
-        if sub == "cov":
+        if sub in ("cov", "localhost"):
             return self._coverage(url, q, d, base)
 
         return self._send(404, b"not found", reason="unknown route")

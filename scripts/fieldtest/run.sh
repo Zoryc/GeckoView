@@ -91,9 +91,11 @@ PY
 # Opens each detection-coverage page and reports whether the app listed a video for it.
 coverage() {
   local key expect found count desc
+  # localhost is a secure context (service workers need one); forward it to the test site.
+  adb reverse tcp:8080 tcp:8080 >/dev/null
   for key in mp4 sources late nested hlsjs dash api-hls api-text sw ad; do
     expect="found"; [ "$key" = "ad" ] && expect="filtered"
-    adb shell am start -W -a android.intent.action.VIEW -d "http://cov.10.0.2.2.nip.io:8080/s/$key" -n "$ACTIVITY" >/dev/null
+    adb shell am start -W -a android.intent.action.VIEW -d "http://localhost:8080/s/$key" -n "$ACTIVITY" >/dev/null
     found="none"; count=0
     if wait_for "Videos found on this page" 35 >/dev/null; then
       desc="$(find_text "Videos found on this page" || true)"
