@@ -48,6 +48,8 @@
   const POSTER_MAX_LAYERS = 6;
   /** A poster layer must cover at least this share of the player, so a related video's thumbnail is never taken. */
   const POSTER_MIN_COVER = 0.5;
+  const POSTER_CACHE_MS = 5000;
+  const posterCache = typeof WeakMap === 'function' ? new WeakMap() : null;
   const THUMBNAIL_WIDTH = 320;
   const THUMBNAIL_QUALITY = 0.7;
 
@@ -211,6 +213,16 @@
   function posterOf(element) {
     const own = httpOnly(text(element.poster));
     if (own) return own;
+    // Scans can be frequent on busy pages: the search below is repeated at most every few seconds per element.
+    const time = Date.now();
+    const cached = posterCache && posterCache.get(element);
+    if (cached && time - cached.at < POSTER_CACHE_MS) return cached.url;
+    const url = findPosterAround(element);
+    if (posterCache) posterCache.set(element, { url, at: time });
+    return url;
+  }
+
+  function findPosterAround(element) {
     const base = baseUrlOf(element);
     let player = rectOf(element);
     let node = element;
