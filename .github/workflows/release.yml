@@ -1,9 +1,15 @@
 name: Release
 
-# Pushing a tag like v0.1 builds the release APKs and publishes them as a GitHub release.
+# Builds the release APKs and publishes them as a GitHub release. Run it from the Actions tab with a
+# version number (it creates the vX.Y tag on the selected branch), or push a vX.Y tag.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish, without the "v" (e.g. 0.1)
+        required: true
 
 permissions:
   contents: write
@@ -40,9 +46,20 @@ jobs:
           SNAPCAST_KEY_PASSWORD: ${{ secrets.SNAPCAST_KEY_PASSWORD }}
         run: ./gradlew assembleRelease
 
+      - name: Resolve the tag
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="v${INPUT_VERSION#v}"
+          else
+            tag="$GITHUB_REF_NAME"
+          fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+
       - name: Name the APKs
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG#v}"
           mkdir -p dist
           for abi in arm64-v8a armeabi-v7a x86_64; do
             cp "app/build/outputs/apk/release/app-${abi}-release.apk" "dist/snapcast-${version}-${abi}.apk"
@@ -54,7 +71,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --title "Snapcast ${GITHUB_REF_NAME}" \
-            --notes-file .github/release-notes.md \
-            --prerelease
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Release created in the GitHub UI: attach the APKs to it.
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --target "$GITHUB_SHA" \
+              --title "Snapcast $TAG" \
+              --notes-file .github/release-notes.md \
+              --prerelease
+          fi
