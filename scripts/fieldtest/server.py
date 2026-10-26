@@ -152,8 +152,9 @@ if (window.Hls && Hls.isSupported()) {{
   hls.on(Hls.Events.MANIFEST_PARSED, function () {{ v.play().catch(function(){{}}); }});
 }} else {{ v.src = src; }}
 </script></body></html>"""
+                # No SameSite=None: browsers reject it without Secure, and site/embed/cdn are same-site anyway.
                 return self._send(200, html.encode(), "text/html; charset=utf-8",
-                                  {"Set-Cookie": "sess=ok; Path=/; Domain=" + self.server.base + "; SameSite=None"})
+                                  {"Set-Cookie": "sess=ok; Path=/; Domain=" + self.server.base})
             if url.path == "/hls.min.js":
                 return self._file(os.path.join(d, "hls.min.js"), "application/javascript")
             if url.path == "/poster.jpg":

@@ -68,6 +68,32 @@ for y, value in sorted(rows):
 PY
 }
 
+# Prints "x y" of the first node matching $2 below the first node whose text is exactly $1
+# (e.g. the "Play on phone" button of the row tagged "HLS").
+find_below() {
+  dump_ui
+  python3 - "$1" "$2" "$WORK/ui.xml" <<'PY'
+import re, sys
+import xml.etree.ElementTree as ET
+anchor, pattern = sys.argv[1], re.compile(sys.argv[2])
+try:
+    root = ET.parse(sys.argv[3]).getroot()
+except Exception:
+    sys.exit(1)
+nodes = []
+for node in root.iter("node"):
+    x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds", "0 0 0 0")))
+    nodes.append(((node.get("text") or "", node.get("content-desc") or ""), (x1 + x2) // 2, (y1 + y2) // 2))
+tops = [y for (t, d), x, y in nodes if anchor in (t.strip(), d.strip())]
+if not tops:
+    sys.exit(1)
+below = sorted((y, x) for (t, d), x, y in nodes if y > tops[0] and (pattern.search(t) or pattern.search(d)))
+if not below:
+    sys.exit(1)
+print(below[0][1], below[0][0])
+PY
+}
+
 wait_for() {
   local pattern="$1" timeout="${2:-60}" waited=0 center
   while (( waited < timeout )); do
@@ -93,15 +119,33 @@ report() { # title
     adb logcat -d -v brief 2>/dev/null | grep -iE "ExoPlayer|PlaybackException|InvalidResponseCode|HttpDataSource|Response code|AndroidRuntime|FATAL|Snapcast|coil|Coil" | tail -n 60; \
     echo "::endgroup::"; adb logcat -c; }
 
-play_item() { # n step-name
-  log "play on phone #$1"
-  if tap "^Play on phone$" 20 "$1"; then
-    shot "$2" 18
-    report "player $2"
-    adb shell input keyevent KEYCODE_BACK; sleep 2
-    # Leave the player (PiP may keep it): bring Snapcast's main activity back.
-    adb shell am start -W -n "$ACTIVITY" >/dev/null 2>&1; sleep 2
-  fi
+leave_player() {
+  adb shell input keyevent KEYCODE_BACK; sleep 2
+  # Leave the player (PiP may keep it): bring Snapcast's main activity back.
+  adb shell am start -W -n "$ACTIVITY" >/dev/null 2>&1; sleep 2
+}
+
+watch_player() { # step-name
+  sleep 6
+  # Android's one-time "Viewing full screen" hint covers the video; dismiss it.
+  find_center "^Got it$" >/dev/null && tap "^Got it$" 5
+  shot "$1" 12
+  report "player $1"
+  leave_player
+}
+
+play_kind() { # type-chip (HLS, MP4, ...) step-name
+  local center waited=0
+  log "play on phone: $1 row"
+  while (( waited < 20 )); do
+    if center="$(find_below "$1" "^Play on phone$")"; then
+      # shellcheck disable=SC2086
+      adb shell input tap $center
+      watch_player "$2"; return 0
+    fi
+    sleep 3; waited=$((waited + 3))
+  done
+  log "no $1 row with a Play on phone button"; return 1
 }
 
 open_list() {
@@ -127,22 +171,23 @@ open_list
 shot 02-list 4
 report "video list"
 
-play_item 1 03-play-1
-open_list; play_item 2 04-play-2
-open_list; play_item 3 05-play-3
+play_kind HLS 03-play-hls
+open_list; play_kind MP4 04-play-mp4
 
 log "waiting for tokens to expire"
 sleep 130
-open_list; play_item 1 06-play-1-expired
+open_list; play_kind HLS 05-play-hls-expired
 open_list
 tap "^Scan again$" 10 && sleep 6
-shot 07-list-after-rescan 2
+shot 06-list-after-rescan 2
 report "list after rescan"
-play_item 1 08-play-1-after-rescan
+play_kind HLS 07-play-hls-after-rescan
 
 log "reload page and retry"
 adb shell am start -W -a android.intent.action.VIEW -d "$SITE" -n "$ACTIVITY" >/dev/null
 wait_for "Videos found on this page" 90 >/dev/null
-open_list; shot 09-list-after-reload 3
-play_item 1 10-play-1-after-reload
+sleep 8
+open_list; shot 08-list-after-reload 3
+report "list after reload"
+play_kind HLS 09-play-hls-after-reload
 log "done"
