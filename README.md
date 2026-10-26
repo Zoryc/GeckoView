@@ -60,6 +60,8 @@ available as artifacts of the [CI workflow](https://github.com/Zoryc/Snapcast/ac
   Signature enforcement stays on.
 * **Extras**: cast videos stored on the phone, import IPTV `.m3u` playlists, and use
   picture-in-picture for local playback.
+* **Report a site problem**: from the menu or the video list. You see the report before sending it, and
+  it opens as a prefilled GitHub issue. It never includes cookies, tokens or video links.
 
 ## Project layout
 

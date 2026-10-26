@@ -60,6 +60,14 @@ Dependency direction: `app → ui → {browser, detection, addons, cast, player}
 * Native side: `session.webExtensionController.setMessageDelegate(extension, delegate, "snapcast")` per
   session; the delegate's `onConnect(port)` installs a `PortDelegate`. A tab's list is reset on
   `SessionObserver.onPageStart`.
+* Headers: what a network request really sent is authoritative. A DOM find carries only the Referer the
+  page's referrer policy would send. Cookies seen anywhere in the tab (newest value per host) apply to
+  every entry. Posters keep the Referer of the document that showed them (`DetectedVideo.posterReferer`).
+* Pictures: posters come from the `poster` attribute, player poster attributes or layers covering the
+  player, or og:image. While the video list is open, the app posts a `thumbnails` command and every frame
+  captures each loaded video once into a 320-pixel JPEG (`DetectedVideo.frameThumbnail`, never sent anywhere).
+* Quality: an adaptive stream's label comes from its variants only (`qualityLabel`, `hasQualityRange`),
+  never from the page player's current size.
 * DRM: EME permission requests (`PERMISSION_MEDIA_KEY_SYSTEM_ACCESS`, surfaced as
   `SessionObserver.onMediaKeySystemRequested`), the `encrypted` DOM event, HLS `SAMPLE-AES` keys with a
   DRM KEYFORMAT and DASH `ContentProtection` all mark videos as DRM-protected. DRM content is never cast
@@ -76,6 +84,8 @@ keys, subtitles and DASH templates also hit the proxy (signed /u/ and /b/ routes
 
 * The proxy runs while a cast session is active, inside `CastPlaybackService` (foreground service type
   `mediaPlayback`) which also holds Wi-Fi + wake locks and owns the media notification/MediaSession.
+* Cookies a server sets during a cast (Set-Cookie on a playlist, key or redirect) are kept per registration in
+  memory and sent back where they apply; the phone player does the same with a per-playback cookie jar.
 * "Cast directly" skips the proxy when no headers are needed (or when the proxy is disabled).
 
 ## Efficiency rules
