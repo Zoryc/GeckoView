@@ -32,9 +32,9 @@ User-Agent), so streams that refuse anonymous requests still play on the TV. Fir
 
 ## Download
 
-Every push builds installable APKs in [GitHub Actions](https://github.com/Zoryc/Snapcast/actions/workflows/ci.yml).
-Open the latest green run and download **snapcast-release-arm64-v8a** (most phones), then install the APK.
-The other ABIs are in **snapcast-release-other-abis**.
+Get the latest APK from [Releases](https://github.com/Zoryc/Snapcast/releases): pick
+`snapcast-<version>-arm64-v8a.apk` for almost every modern phone. Builds of every commit are also
+available as artifacts of the [CI workflow](https://github.com/Zoryc/Snapcast/actions/workflows/ci.yml).
 
 ## Features
 
