@@ -4,7 +4,7 @@ Bug fixes for thumbnails, video quality and refused links, and a way to report s
 
 Download **`snapcast-0.1.1-arm64-v8a.apk`** (almost every phone from the last few years) and open it on your phone. Older 32-bit phones need `armeabi-v7a`; `x86_64` is for emulators and Chromebooks.
 
-**Updating from 0.1:** uninstall 0.1 first. 0.1 was signed with a temporary development key, so Android refuses to install 0.1.1 over it.
+**Updating from 0.1:** uninstall 0.1 first. 0.1 was signed with a temporary development key, so Android refuses to install 0.1.1 over it. 0.1.1 is signed with a temporary key too, so the next version will also need an uninstall.
 
 ### What's new in 0.1.1
 
