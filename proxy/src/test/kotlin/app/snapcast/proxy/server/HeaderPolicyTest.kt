@@ -73,6 +73,16 @@ class HeaderPolicyTest {
     }
 
     @Test
+    fun `a token renewed on a deeper path is sent first, as a browser orders cookies`() {
+        val policy = HeaderPolicy(emptyMap(), "https://cdn.site.com/v/master.m3u8", emptyMap(), null)
+        // No Path attribute: each cookie gets the directory of the response that set it.
+        policy.rememberCookies("https://cdn.site.com/v/master.m3u8".toHttpUrl(), headersOf("Set-Cookie", "tok=OLD"))
+        policy.rememberCookies("https://cdn.site.com/v/720/index.m3u8".toHttpUrl(), headersOf("Set-Cookie", "tok=NEW"))
+        assertThat(policy.headersFor("https://cdn.site.com/v/720/seg1.ts".toHttpUrl(), dropAuthorization = false)["Cookie"]).isEqualTo("tok=NEW")
+        assertThat(policy.headersFor("https://cdn.site.com/v/480/seg1.ts".toHttpUrl(), dropAuthorization = false)["Cookie"]).isEqualTo("tok=OLD")
+    }
+
+    @Test
     fun `a blank authorization is not sent`() {
         val blank = HeaderPolicy(mapOf("Authorization" to " "), "https://api.site.com/m.m3u8", emptyMap(), null)
         assertThat(blank.headersFor("https://api.site.com/seg.ts".toHttpUrl(), dropAuthorization = false)["Authorization"]).isNull()

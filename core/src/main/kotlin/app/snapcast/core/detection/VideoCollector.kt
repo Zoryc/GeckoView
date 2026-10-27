@@ -180,6 +180,8 @@ class VideoCollector(
             // What the browser really sent wins over what a DOM report says it would send.
             isDom && entry.networkHeaders -> old.headers
             !isDom && !entry.networkHeaders -> reportHeaders
+            // The latest DOM report says which Referer the page sends now, none included (its policy became known).
+            isDom -> reportHeaders.filledFrom(old.headers).copy(referer = reportHeaders.referer)
             else -> reportHeaders.filledFrom(old.headers)
         }
         if (!isDom) entry.networkHeaders = true

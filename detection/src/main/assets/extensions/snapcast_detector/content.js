@@ -35,17 +35,24 @@
   /** A frame stops reporting new URLs past this many (pathological pages). */
   const MAX_REPORTED_URLS = 300;
   const DEFAULT_REFERRER_POLICY = 'strict-origin-when-cross-origin';
+  /** How long scans wait for the document's Referrer-Policy header (asked of the background page). */
+  const POLICY_WAIT_MS = 500;
   const REFERRER_POLICIES = new Set([
     'no-referrer', 'no-referrer-when-downgrade', 'origin', 'origin-when-cross-origin', 'same-origin',
     'strict-origin', 'strict-origin-when-cross-origin', 'unsafe-url',
   ]);
-  /** Legacy <meta name="referrer"> keywords the HTML spec still maps to a policy. */
+  /** Legacy <meta name="referrer"> keywords, mapped as Gecko does (it keeps `default` as no-referrer-when-downgrade). */
   const LEGACY_META_POLICIES = {
     never: 'no-referrer',
     always: 'unsafe-url',
     'origin-when-crossorigin': 'origin-when-cross-origin',
-    default: DEFAULT_REFERRER_POLICY,
+    default: 'no-referrer-when-downgrade',
   };
+  /**
+   * Policies Gecko ignores for cross-site media and other subresources, using the default policy instead
+   * (network.http.referer.disallowCrossSiteRelaxingDefault).
+   */
+  const RELAXING_POLICIES = new Set(['unsafe-url', 'no-referrer-when-downgrade', 'origin-when-cross-origin']);
   /** Attributes player libraries put a poster URL in (on the <video> or its container). */
   const POSTER_ATTRIBUTES = ['data-poster', 'data-poster-url', 'data-thumbnail', 'data-thumb'];
   /** Layers player libraries draw a poster with (video.js, Plyr, ArtPlayer, Clappr, JW Player, Flowplayer...). */
@@ -127,7 +134,11 @@
     return policy;
   }
 
-  /** The Referer a document at [documentUrl] sends for [targetUrl] under [policy]; undefined for none. */
+  /**
+   * The Referer a document at [documentUrl] sends for [targetUrl] under [policy]; undefined for none. A relaxing
+   * policy only applies within the document's origin: Gecko ignores it for cross-site targets, and without the
+   * public suffix list every other origin is taken as cross-site (which never sends more than the browser).
+   */
   function referrerFor(documentUrl, targetUrl, policy) {
     let from;
     let to;
@@ -145,7 +156,7 @@
     const origin = `${from.origin}/`;
     const sameOrigin = from.origin === to.origin;
     const downgrade = from.protocol === 'https:' && to.protocol === 'http:';
-    switch (policy) {
+    switch (!sameOrigin && RELAXING_POLICIES.has(policy) ? DEFAULT_REFERRER_POLICY : policy) {
       case 'no-referrer': return undefined;
       case 'unsafe-url': return full;
       case 'origin': return origin;
@@ -568,6 +579,9 @@
     let deliveryRound = 0;
     /** Policy from the document's Referrer-Policy response header (asked of the background page). */
     let headerPolicy = null;
+    /** Scans and pictures wait for that answer (at most POLICY_WAIT_MS), so no report has a Referer the page won't send. */
+    let policyKnown = false;
+    let scanWaiting = false;
 
     function location() {
       try {
@@ -636,6 +650,10 @@
     function scan() {
       scanTimer = null;
       firstDirtyAt = 0;
+      if (!policyKnown) {
+        scanWaiting = true;
+        return;
+      }
       try {
         const context = frameContext();
         const videos = doc.getElementsByTagName('video');
@@ -689,6 +707,7 @@
 
     /** Sends a picture of every loaded <video> of this frame not sent since the last rescan (drawing each source once). */
     function captureThumbnails() {
+      if (!policyKnown) return;
       try {
         const context = frameContext();
         const videos = doc.getElementsByTagName('video');
@@ -833,15 +852,31 @@
       }
     }
 
-    // The document's Referrer-Policy header is only visible to the background page; until it answers (before
-    // the first scan, in practice) the default policy applies.
+    /** The header policy is known (null: none, or no answer in time); a late, different answer rescans. */
+    function onPolicy(policy) {
+      if (policyKnown) {
+        if (policy === headerPolicy) return;
+        headerPolicy = policy;
+        sent.clear();
+        scheduleScan(50);
+        return;
+      }
+      policyKnown = true;
+      headerPolicy = policy;
+      if (scanWaiting) {
+        scanWaiting = false;
+        scheduleScan(0);
+      }
+    }
+
+    // The document's Referrer-Policy header is only visible to the background page.
     sendToBackground({ kind: M.POLICY }).then((reply) => {
       const policy = reply && typeof reply.referrerPolicy === 'string' ? reply.referrerPolicy : null;
-      if (!policy || !REFERRER_POLICIES.has(policy) || policy === headerPolicy) return;
-      headerPolicy = policy;
-      sent.clear();
-      scheduleScan(50);
-    }, noop);
+      onPolicy(policy && REFERRER_POLICIES.has(policy) ? policy : null);
+    }, () => onPolicy(null));
+    setTimer(() => {
+      if (!policyKnown) onPolicy(null);
+    }, POLICY_WAIT_MS);
 
     if (isTop) {
       link = createNativeLink(browser.runtime, {

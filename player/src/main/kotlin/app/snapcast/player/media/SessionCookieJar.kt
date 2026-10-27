@@ -15,8 +15,13 @@ internal class SessionCookieJar : CookieJar {
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         val now = System.currentTimeMillis()
         for (cookie in cookies) {
-            this.cookies.removeAll { it.name == cookie.name && it.domain == cookie.domain && it.path == cookie.path }
-            if (cookie.expiresAt > now) this.cookies += cookie
+            val index = this.cookies.indexOfFirst { it.name == cookie.name && it.domain == cookie.domain && it.path == cookie.path }
+            when {
+                cookie.expiresAt <= now -> if (index >= 0) this.cookies.removeAt(index)
+                // A replaced cookie keeps its place (its creation time, for the order below).
+                index >= 0 -> this.cookies[index] = cookie
+                else -> this.cookies += cookie
+            }
         }
         while (this.cookies.size > MAX_COOKIES) this.cookies.removeAt(0)
     }
@@ -24,7 +29,8 @@ internal class SessionCookieJar : CookieJar {
     @Synchronized
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
         val now = System.currentTimeMillis()
-        return cookies.filter { it.expiresAt > now && it.matches(url) }
+        // Browser order (RFC 6265 5.4: longer paths first, then older), so a name's first value is the one servers read.
+        return cookies.filter { it.expiresAt > now && it.matches(url) }.sortedByDescending { it.path.length }
     }
 
     private companion object {

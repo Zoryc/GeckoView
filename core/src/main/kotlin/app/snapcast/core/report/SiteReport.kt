@@ -78,12 +78,13 @@ data class SiteReport(
 
     /**
      * A link to a new issue in [repository] ("owner/name") with the report's form filled in, at most
-     * [MAX_ISSUE_URL] characters once encoded (GitHub refuses longer links): the details, then the diagnostics
-     * are shortened until it fits, and the full page address gives way to the host. Sharing gives the full text.
+     * [MAX_ISSUE_URL] characters once encoded (GitHub refuses longer links). A page address longer than
+     * [MAX_LINKED_ADDRESS] gives way to the host; the details and the diagnostics then share the room left (half
+     * each, unless one needs less) and are shortened to fit. Sharing gives the full text.
      */
     fun issueUrl(repository: String): String {
         val base = "https://github.com/$repository/issues/new?"
-        var siteText = site
+        val siteText = if (encode(site).length > MAX_LINKED_ADDRESS) siteHost else site
         var detailsText = details.trim()
         var diagnosticsText = diagnostics
         fun build(): String = base + linkedMapOf(
@@ -95,20 +96,16 @@ data class SiteReport(
             "diagnostics" to diagnosticsText,
         ).entries.joinToString("&") { (name, value) -> "$name=${encode(value)}" }
 
-        var url = build()
-        if (url.length > MAX_ISSUE_URL && siteText != siteHost) {
-            siteText = siteHost
-            url = build()
-        }
-        while (url.length > MAX_ISSUE_URL && detailsText.isNotEmpty()) {
-            detailsText = shortened(detailsText, url.length - MAX_ISSUE_URL)
-            url = build()
-        }
-        while (url.length > MAX_ISSUE_URL && diagnosticsText.isNotEmpty()) {
-            diagnosticsText = shortened(diagnosticsText, url.length - MAX_ISSUE_URL)
-            url = build()
-        }
-        return url
+        val url = build()
+        if (url.length <= MAX_ISSUE_URL) return url
+        val detailsSize = encode(detailsText).length
+        val diagnosticsSize = encode(diagnosticsText).length
+        val room = (MAX_ISSUE_URL - (url.length - detailsSize - diagnosticsSize)).coerceAtLeast(0)
+        val detailsRoom = maxOf(room / 2, room - diagnosticsSize)
+        val diagnosticsRoom = room - minOf(detailsSize, detailsRoom)
+        if (detailsSize > detailsRoom) detailsText = shortened(detailsText, detailsSize - detailsRoom)
+        if (diagnosticsSize > diagnosticsRoom) diagnosticsText = shortened(diagnosticsText, diagnosticsSize - diagnosticsRoom)
+        return build()
     }
 
     private fun describe(video: DetectedVideo): String {
@@ -144,6 +141,9 @@ data class SiteReport(
 
         /** GitHub answers 414 above about 8 KB of request line; this leaves room for the rest of it. */
         const val MAX_ISSUE_URL = 7_500
+
+        /** Encoded length above which the page address (when shared) is replaced by its host in the issue link. */
+        const val MAX_LINKED_ADDRESS = 2_000
         private const val MAX_VIDEOS = 10
         private const val MAX_EVENTS = 8
         private const val SHORTENED = "\n…(shortened, share the report for the full text)"
@@ -152,21 +152,20 @@ data class SiteReport(
         private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
         /**
-         * [text] shortened so its encoded form loses at least [excess] characters (plus the note saying so), never
-         * splitting a surrogate pair; empty when nothing useful is left.
+         * [text] shortened so its encoded form loses at least [excess] characters (the note saying so included),
+         * never splitting a surrogate pair; empty when nothing useful is left.
          */
         private fun shortened(text: String, excess: Int): String {
-            val body = text.removeSuffix(SHORTENED)
-            var keep = body.length
+            var keep = text.length
             var saved = 0
             val target = excess + encode(SHORTENED).length
             while (keep > 0 && saved < target) {
                 // One code point at a time from the end (a surrogate pair is never split).
-                val start = if (keep > 1 && Character.isLowSurrogate(body[keep - 1]) && Character.isHighSurrogate(body[keep - 2])) keep - 2 else keep - 1
-                saved += encode(body.substring(start, keep)).length
+                val start = if (keep > 1 && Character.isLowSurrogate(text[keep - 1]) && Character.isHighSurrogate(text[keep - 2])) keep - 2 else keep - 1
+                saved += encode(text.substring(start, keep)).length
                 keep = start
             }
-            return if (keep <= 0) "" else body.substring(0, keep) + SHORTENED
+            return if (keep <= 0) "" else text.substring(0, keep) + SHORTENED
         }
     }
 }

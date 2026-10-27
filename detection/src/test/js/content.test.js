@@ -38,6 +38,12 @@ function fakeTimers() {
       queue = [];
       for (const t of due) t.fn();
     },
+    /** Runs the timers queued so far with a delay of at most [ms], not the ones they schedule. */
+    runDue(ms) {
+      const due = queue.filter((t) => t.ms <= ms);
+      queue = queue.filter((t) => t.ms > ms);
+      for (const t of due) t.fn();
+    },
     run() {
       while (queue.length) {
         const due = queue;
@@ -606,11 +612,16 @@ test('referrerFor applies the page referrer policy like the browser', () => {
   assert.equal(r(other), 'https://site.example/');
   assert.equal(r(insecure), undefined);
   assert.equal(r(other, 'no-referrer'), undefined);
-  assert.equal(r(other, 'unsafe-url'), 'https://site.example/watch/1?a=1');
+  assert.equal(r(same, 'unsafe-url'), 'https://site.example/watch/1?a=1');
   assert.equal(r(same, 'origin'), 'https://site.example/');
+  assert.equal(r(insecure, 'origin'), 'https://site.example/');
   assert.equal(r(other, 'same-origin'), undefined);
-  assert.equal(r(other, 'no-referrer-when-downgrade'), 'https://site.example/watch/1?a=1');
   assert.equal(r(insecure, 'strict-origin'), undefined);
+  // Gecko ignores relaxing policies for cross-site media: the default applies.
+  assert.equal(r(other, 'unsafe-url'), 'https://site.example/');
+  assert.equal(r(other, 'no-referrer-when-downgrade'), 'https://site.example/');
+  assert.equal(r(insecure, 'unsafe-url'), undefined);
+  assert.equal(r(insecure, 'origin-when-cross-origin'), undefined);
   assert.equal(content.referrerFor('about:blank', other), undefined);
 });
 
@@ -626,7 +637,8 @@ test('referrerPolicyOf follows the HTML rules for meta referrer over the header 
   assert.equal(content.referrerPolicyOf(docWith('never')), 'no-referrer');
   assert.equal(content.referrerPolicyOf(docWith('always')), 'unsafe-url');
   assert.equal(content.referrerPolicyOf(docWith('origin-when-crossorigin')), 'origin-when-cross-origin');
-  assert.equal(content.referrerPolicyOf(docWith('default'), 'same-origin'), 'strict-origin-when-cross-origin');
+  // Gecko maps `default` to no-referrer-when-downgrade (the HTML spec now says strict-origin-when-cross-origin).
+  assert.equal(content.referrerPolicyOf(docWith('default'), 'same-origin'), 'no-referrer-when-downgrade');
   // Without a meta, the Referrer-Policy header's policy, else the default.
   assert.equal(content.referrerPolicyOf(docWith(), 'same-origin'), 'same-origin');
   assert.equal(content.referrerPolicyOf({ querySelectorAll: () => [] }), 'strict-origin-when-cross-origin');
@@ -796,4 +808,58 @@ test('the Referrer-Policy header of the document applies to DOM reports', async 
   const items = runtime.ports[0].posted.filter((m) => m.type === 'media').flatMap((m) => m.items);
   // same-origin: no Referer for a cross-origin source.
   assert.deepEqual(items.at(-1).requestHeaders, { 'User-Agent': UA });
+});
+
+test('scans wait for the Referrer-Policy answer, so the first report has the right Referer', async () => {
+  const runtime = fakeRuntime();
+  runtime.replies['snapcast-hello'] = { messages: [] };
+  let answer;
+  const sendMessage = runtime.sendMessage;
+  runtime.sendMessage = (message) => {
+    if (message.kind !== 'snapcast-policy') return sendMessage(message);
+    runtime.sent.push(message);
+    return new Promise((resolve) => { answer = resolve; });
+  };
+  const timers = fakeTimers();
+  content.startContent({
+    window: fakeWindow(PAGE, true),
+    document: fakeDocument([video({ currentSrc: 'https://cdn.example/a.mp4' })]),
+    browser: { runtime },
+    MutationObserver: fakeObserverClass().Observer,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
+    now: () => 1,
+  });
+  await settle();
+  const media = () => runtime.ports[0].posted.filter((m) => m.type === 'media').flatMap((m) => m.items);
+  // The first scan is due before the answer: it waits.
+  timers.runDue(100);
+  assert.deepEqual(media(), []);
+  answer({ referrerPolicy: 'same-origin' });
+  await settle();
+  timers.runDue(100);
+  assert.equal(media().length, 1);
+  assert.deepEqual(media()[0].requestHeaders, { 'User-Agent': UA });
+});
+
+test('without an answer in time, scans go on with the default policy', async () => {
+  const runtime = fakeRuntime();
+  runtime.replies['snapcast-hello'] = { messages: [] };
+  const sendMessage = runtime.sendMessage;
+  runtime.sendMessage = (message) => (message.kind === 'snapcast-policy' ? new Promise(() => {}) : sendMessage(message));
+  const timers = fakeTimers();
+  content.startContent({
+    window: fakeWindow(PAGE, true),
+    document: fakeDocument([video({ currentSrc: 'https://cdn.example/a.mp4' })]),
+    browser: { runtime },
+    MutationObserver: fakeObserverClass().Observer,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
+    now: () => 1,
+  });
+  await settle();
+  timers.run();
+  const items = runtime.ports[0].posted.filter((m) => m.type === 'media').flatMap((m) => m.items);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].requestHeaders.Referer, 'https://site.example/');
 });

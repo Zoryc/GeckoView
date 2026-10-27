@@ -174,6 +174,16 @@ class VideoCollectorTest {
     }
 
     @Test
+    fun `a later dom report sets the referer of a page-only video, none included`() {
+        val url = "https://media.example.com/d.mp4"
+        collector.add(dom(url, headers = mapOf("Referer" to "https://site.example/", "User-Agent" to "Gecko")))
+        // The page's referrer policy became known (no-referrer): the guessed Referer goes, the rest stays.
+        val corrected = collector.add(dom(url))!!
+        assertThat(corrected.headers.referer).isNull()
+        assertThat(corrected.headers.userAgent).isEqualTo("Gecko")
+    }
+
+    @Test
     fun `network headers stay authoritative when a dom report arrives later`() {
         val url = "https://media.example.com/clip.mp4"
         collector.add(network(url, mime = "video/mp4", headers = mapOf("User-Agent" to "Gecko")))

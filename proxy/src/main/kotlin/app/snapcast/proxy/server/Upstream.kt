@@ -80,8 +80,13 @@ internal class HeaderPolicy(
         val now = System.currentTimeMillis()
         synchronized(sessionCookies) {
             for (cookie in received) {
-                sessionCookies.removeAll { it.name == cookie.name && it.domain == cookie.domain && it.path == cookie.path }
-                if (cookie.expiresAt > now) sessionCookies += cookie
+                val index = sessionCookies.indexOfFirst { it.name == cookie.name && it.domain == cookie.domain && it.path == cookie.path }
+                when {
+                    cookie.expiresAt <= now -> if (index >= 0) sessionCookies.removeAt(index)
+                    // A replaced cookie keeps its place (its creation time, for the order below).
+                    index >= 0 -> sessionCookies[index] = cookie
+                    else -> sessionCookies += cookie
+                }
             }
             while (sessionCookies.size > MAX_SESSION_COOKIES) sessionCookies.removeAt(0)
         }
@@ -90,7 +95,8 @@ internal class HeaderPolicy(
     private fun receivedCookies(url: HttpUrl): String? {
         val now = System.currentTimeMillis()
         val matching = synchronized(sessionCookies) { sessionCookies.filter { it.expiresAt > now && it.matches(url) } }
-        return matching.joinToString("; ") { "${it.name}=${it.value}" }.takeIf { it.isNotEmpty() }
+        // Browser order (RFC 6265 5.4: longer paths first, then older), so a name's first value is the one servers read.
+        return matching.sortedByDescending { it.path.length }.joinToString("; ") { "${it.name}=${it.value}" }.takeIf { it.isNotEmpty() }
     }
 
     /**

@@ -73,10 +73,25 @@ class SiteReportTest {
             assertThat(decoded).contains("(shortened")
             assertThat(decoded).doesNotContain("\uFFFD")
         }
+        // The address the user agreed to share stays; the details are shortened instead.
+        assertThat(URLDecoder.decode(cyrillic.issueUrl("Zoryc/Snapcast"), "UTF-8")).contains("site=https://www.site.example/watch/42?user=SECRET-USER&")
         val longAddress = report(includeUrl = true).copy(pageUrl = "https://www.site.example/watch?" + "q=1&".repeat(3_000))
         val url = longAddress.issueUrl("Zoryc/Snapcast")
         assertThat(url.length).isAtMost(SiteReport.MAX_ISSUE_URL)
         assertThat(URLDecoder.decode(url, "UTF-8")).contains("site=site.example&")
+    }
+
+    @Test
+    fun `long details and long diagnostics both keep a part`() {
+        val events = List(8) { ReportEvent(it.toLong(), "player", "Ошибка воспроизведения ".repeat(12)) }
+        val r = report(details = "Сайт не работает. ".repeat(300)).copy(events = events)
+        val url = r.issueUrl("Zoryc/Snapcast")
+        assertThat(url.length).isAtMost(SiteReport.MAX_ISSUE_URL)
+        val fields = url.substringAfter('?').split('&').associate { it.substringBefore('=') to URLDecoder.decode(it.substringAfter('='), "UTF-8") }
+        assertThat(fields.getValue("details")).startsWith("Сайт не работает.")
+        assertThat(fields.getValue("details").length).isGreaterThan(300)
+        assertThat(fields.getValue("diagnostics")).startsWith("- App: Snapcast")
+        assertThat(fields.getValue("diagnostics").length).isGreaterThan(300)
     }
 
     @Test
