@@ -102,4 +102,19 @@ class VideoReplayTest {
         runCurrent()
         assertThat(found.await()).isEqualTo(main)
     }
+
+    @Test
+    fun `more videos on the same path do not delay a clear pick`() = runTest {
+        val original = "https://cdn.example/hls/play.m3u8?id=1&sig=old"
+        val main = video("https://cdn.example/hls/play.m3u8?id=1&sig=new", detectedAt = 2_000)
+        val list = MutableStateFlow(listOf(main))
+        val found = async { VideoReplay.await(list, original, since = 1_000, settleMs = 2_000) }
+        for (n in 2..4) {
+            advanceTimeBy(1_500)
+            list.value = list.value + video("https://cdn.example/hls/play.m3u8?id=$n&sig=p$n", detectedAt = 2_000)
+        }
+        runCurrent()
+        assertThat(found.isCompleted).isTrue()
+        assertThat(found.await()).isEqualTo(main)
+    }
 }

@@ -6,9 +6,9 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapNotNull
 
 /**
  * Finding a video again after its page was reloaded to renew an expired link: the new link usually differs only
@@ -50,16 +50,16 @@ internal object VideoReplay {
 
     /**
      * Waits in [lists] (a tab's video list) for [originalUrl] to show up again after [since], and decides once the
-     * candidates have stayed the same for [settleMs]: another video on the same path (a preview, say) can show up
-     * before the one that was playing, and one can leave the list again (hidden by a filter, or the list reset).
-     * While the choice is ambiguous it keeps waiting (the caller bounds the wait).
+     * pick has stayed the same for [settleMs]: another video on the same path (a preview, say) can show up before
+     * the one that was playing, and one can leave the list again (hidden by a filter, or the list reset). While the
+     * choice is ambiguous it keeps waiting (the caller bounds the wait).
      */
     @OptIn(FlowPreview::class)
     suspend fun await(lists: Flow<List<DetectedVideo>>, originalUrl: String, since: Long, settleMs: Long): DetectedVideo =
-        lists.map { candidates(it, originalUrl, since) }
-            .distinctUntilChanged { old, new -> old.map { it.id } == new.map { it.id } }
+        lists.map { find(it, originalUrl, since) }
+            .distinctUntilChanged { old, new -> old?.id == new?.id }
             .debounce(settleMs)
-            .mapNotNull { pick(it, originalUrl) }
+            .filterNotNull()
             .first()
 
     private fun queryPairs(url: String): Set<String> =
