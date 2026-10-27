@@ -61,8 +61,10 @@ Dependency direction: `app → ui → {browser, detection, addons, cast, player}
   session; the delegate's `onConnect(port)` installs a `PortDelegate`. A tab's list is reset on
   `SessionObserver.onPageStart`.
 * Headers: what a network request really sent is authoritative. A DOM find carries only the Referer the
-  page's referrer policy would send, as GeckoView applies it (relaxing policies don't reach other sites); the
-  detector waits for the policy from the Referrer-Policy header before its first scan. Cookies seen anywhere in the tab (newest value per host) apply to
+  page's referrer policy would send, as GeckoView applies it. GeckoView ignores relaxing policies (unsafe-url,
+  no-referrer-when-downgrade, origin-when-cross-origin) for other sites; without the public suffix list the
+  detector treats every other origin as another site, so it can send less than the browser, never more. It waits
+  for the policy from the Referrer-Policy header before its first scan. Cookies seen anywhere in the tab (newest value per host) apply to
   every entry. Posters keep the Referer of the document that showed them (`DetectedVideo.posterReferer`).
 * Pictures: posters come from the `poster` attribute, player poster attributes or layers covering the
   player, or og:image. While the video list is open and some video has no usable picture, the app posts a

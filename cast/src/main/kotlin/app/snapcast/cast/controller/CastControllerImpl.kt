@@ -162,8 +162,11 @@ internal class CastControllerImpl @Inject constructor(
     private var inBandSubtitleSelection: Job? = null
     private val privateUrls = HashSet<String>()
 
-    /** Page of each recently cast video of a normal tab, by video URL: receiver errors are told about that page. */
-    private val pagesByUrl = object : LinkedHashMap<String, String>() {
+    /**
+     * Page of each recently cast video of a normal tab, by video URL, least recently cast first: receiver errors
+     * are told about that page.
+     */
+    private val pagesByUrl = object : LinkedHashMap<String, String>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > MAX_PAGES_BY_URL
     }
 
@@ -449,8 +452,9 @@ internal class CastControllerImpl @Inject constructor(
             val first = batch.items.first()
             val startMs = startPosition(first, request.startPositionMs)
             // Recorded before the load so no position of a private-tab video is saved while it starts playing.
+            // In reverse play order, so the items that play first are the most recently noted.
+            batch.consumed.asReversed().forEach { remember(it.video) }
             if (request is CastRequest.Remote) remember(request.video)
-            batch.consumed.forEach { remember(it.video) }
             // Started while the app is still visible (Android 12+ refuses it from the background, and the LOAD
             // reply may only come seconds later); the service holds the proxy from now on and stops itself if
             // nothing ends up loaded.

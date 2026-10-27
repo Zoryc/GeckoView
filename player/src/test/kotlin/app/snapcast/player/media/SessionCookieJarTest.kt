@@ -24,6 +24,16 @@ class SessionCookieJarTest {
     }
 
     @Test
+    fun aTokenSetAgainOutlivesNewerOneOffCookiesPastTheLimit() {
+        val jar = SessionCookieJar()
+        for (step in 0 until 120) {
+            if (step % 5 == 0) jar.save("https://cdn.site.com/live/index.m3u8", "hdntl=T$step; Path=/")
+            jar.save("https://ads$step.site.com/x", "__cf_bm=$step; Path=/")
+            assertThat(jar.header("https://cdn.site.com/live/seg$step.ts")).startsWith("hdntl=")
+        }
+    }
+
+    @Test
     fun aReplacedCookieKeepsItsPlaceAndAnExpiredOneIsRemoved() {
         val jar = SessionCookieJar()
         jar.save("https://cdn.site.com/", "a=1; Path=/")

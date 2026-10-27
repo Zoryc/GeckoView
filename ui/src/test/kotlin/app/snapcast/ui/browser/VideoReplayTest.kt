@@ -67,13 +67,39 @@ class VideoReplayTest {
     }
 
     @Test
-    fun `candidates that stay ambiguous give no video`() = runTest {
+    fun `a candidate that leaves the list is not played`() = runTest {
+        val original = "https://cdn.example/hls/master.m3u8?v=111&sig=old"
+        val main = video("https://cdn.example/hls/master.m3u8?v=111&sig=new", detectedAt = 2_000)
+        val preview = video("https://cdn.example/hls/master.m3u8?v=222&sig=new2", detectedAt = 2_000)
+        val list = MutableStateFlow(emptyList<DetectedVideo>())
+        val found = async { VideoReplay.await(list, original, since = 1_000, settleMs = 2_000) }
+        list.value = listOf(preview)
+        advanceTimeBy(300)
+        // Hidden (too short for the detection filter): gone from the visible list.
+        list.value = emptyList()
+        advanceTimeBy(2_200)
+        list.value = listOf(main)
+        advanceTimeBy(2_001)
+        runCurrent()
+        assertThat(found.await()).isEqualTo(main)
+    }
+
+    @Test
+    fun `a tie keeps waiting for the video that settles it`() = runTest {
+        val original = "https://cdn.example/hls/master.m3u8?v=111&sig=old"
         val list = MutableStateFlow(
             listOf(
-                video("https://cdn.example/hls/master.m3u8?t=1", detectedAt = 2_000),
-                video("https://cdn.example/hls/master.m3u8?t=2", detectedAt = 2_000),
+                video("https://cdn.example/hls/master.m3u8?v=222&sig=a", detectedAt = 2_000),
+                video("https://cdn.example/hls/master.m3u8?v=333&sig=b", detectedAt = 2_000),
             ),
         )
-        assertThat(VideoReplay.await(list, "https://cdn.example/hls/master.m3u8?t=0", since = 1_000, settleMs = 2_000)).isNull()
+        val found = async { VideoReplay.await(list, original, since = 1_000, settleMs = 2_000) }
+        advanceTimeBy(2_500)
+        assertThat(found.isCompleted).isFalse()
+        val main = video("https://cdn.example/hls/master.m3u8?v=111&sig=new", detectedAt = 2_000)
+        list.value = list.value + main
+        advanceTimeBy(2_001)
+        runCurrent()
+        assertThat(found.await()).isEqualTo(main)
     }
 }

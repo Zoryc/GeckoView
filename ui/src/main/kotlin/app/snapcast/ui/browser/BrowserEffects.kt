@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -88,6 +89,25 @@ internal fun BrowserEventsEffect(
             viewModel.uiEvents.collect { event ->
                 val snackbars = Snackbars(context, snackbarHostState, scope, filter)
                 handleEvent(event, context, viewModel, snackbars, currentCallbacks)
+            }
+        }
+    }
+}
+
+/**
+ * Runs the player's "Reload page" requests once the browser is shown again (resumed, and its page view laid out):
+ * a page reloaded while the browser was hidden under the player kept GeckoView's renderer restart busy for seconds.
+ */
+@Composable
+internal fun ReloadForReplayEffect(viewModel: BrowserViewModel) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(viewModel, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.reloadRequests.collect { request ->
+                // The first frame lays the page view out again (GeckoView resumes its renderer then); reload after it.
+                withFrameNanos { }
+                withFrameNanos { }
+                viewModel.reloadAndReplay(request)
             }
         }
     }

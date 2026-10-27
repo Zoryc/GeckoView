@@ -200,9 +200,6 @@ internal class BrowserViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            playerLauncher.reloadRequests.collect(::reloadAndReplay)
-        }
-        viewModelScope.launch {
             videoRepository.videosByTab.collect { byTab ->
                 failedPostersByTab.update { current ->
                     if (current.isEmpty()) return@update current
@@ -449,12 +446,15 @@ internal class BrowserViewModel @Inject constructor(
         )
     }
 
+    /** "Reload page" requests from the player, run by the screen once the browser is shown again. */
+    val reloadRequests: Flow<PlaybackRequest> = playerLauncher.reloadRequests
+
     /**
      * The player was refused [request]'s link (it expired) and the user chose "Reload page": reload the page it
      * came from (in its tab when still open), wait for the same video to show up again with a fresh link, and
      * play it. No extra requests: the page itself fetches the new link.
      */
-    private fun reloadAndReplay(request: PlaybackRequest) {
+    fun reloadAndReplay(request: PlaybackRequest) {
         val pageUrl = request.pageUrl?.takeIf(UrlUtils::isHttp) ?: return
         val tabs = browserTabs.tabs.value
         val sameDocument = { url: String? -> url?.substringBefore('#') == pageUrl.substringBefore('#') }
@@ -473,7 +473,7 @@ internal class BrowserViewModel @Inject constructor(
         replayJob = viewModelScope.launch {
             val video = withTimeoutOrNull(REPLAY_TIMEOUT_MS) {
                 VideoReplay.await(videoRepository.videosForTab(tabId), request.url, since, REPLAY_SETTLE_MS)
-            }?.let { picked -> videoRepository.findVideo(tabId, picked.id) ?: picked }
+            }?.let { picked -> videoRepository.videosByTab.value[tabId]?.firstOrNull { it.id == picked.id } ?: picked }
             uiEventChannel.trySend(
                 if (video != null) {
                     // The stream's variants are usually not known yet: the player matches the quality itself.

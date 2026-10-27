@@ -137,6 +137,7 @@ internal fun BrowserScreen(
         snackbarHostState = snackbarHostState,
     )
 
+    ReloadForReplayEffect(viewModel)
     BrowserEventsEffect(
         viewModel = viewModel,
         snackbarHostState = snackbarHostState,

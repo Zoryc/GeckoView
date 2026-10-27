@@ -64,8 +64,9 @@ class SiteReportTest {
     fun `non-ascii details and a long page address still fit the link budget`() {
         val cyrillic = report(details = "Видео не воспроизводится, ошибка доступа. ".repeat(60), includeUrl = true)
         val cjk = report(details = "视频无法播放，服务器拒绝访问。".repeat(200))
-        val emoji = report(details = "😀".repeat(3_000))
-        for (r in listOf(cyrillic, cjk, emoji)) {
+        // Every offset of the cut within a surrogate pair's encoding (12 characters per emoji).
+        val emoji = (0..11).flatMap { pad -> listOf(false, true).map { report(details = "x".repeat(pad) + "😀".repeat(3_000), includeUrl = it) } }
+        for (r in listOf(cyrillic, cjk) + emoji) {
             val url = r.issueUrl("Zoryc/Snapcast")
             assertThat(url.length).isAtMost(SiteReport.MAX_ISSUE_URL)
             // No half surrogate pair (URLEncoder writes a lone one as "?", %3F; these details have none), and the

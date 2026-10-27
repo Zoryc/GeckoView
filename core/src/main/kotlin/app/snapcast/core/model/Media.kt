@@ -226,8 +226,9 @@ object VideoResolution {
     /**
      * The usual name of a [width] x [height] frame, snapped to a standard class when within 6 %. A frame up to 16:9
      * wide is named by its short side (1920x1080, 1080x1920, 1440x1080 and 1024x768 are 1080, 1080, 1080 and 768).
-     * A wider one (scope, DCI) is named by its width: the height a 16:9 or a DCI frame as wide would have
-     * (1920x800, 2048x1080 and 2048x858 are all 1080). A frame with only a height known uses that height.
+     * A wider one (scope, DCI) is named by its width: the height a 16:9 frame as wide would have, or for one at least
+     * as wide as DCI (256:135) a DCI frame (1920x800, 2048x1080 and 2048x858 are all 1080; 1366x768 is 768). A frame
+     * with only a height known uses that height.
      */
     fun classOf(width: Int?, height: Int?): Int? {
         val w = width?.takeIf { it > 0 }
@@ -237,7 +238,8 @@ object VideoResolution {
         val long = maxOf(w, h)
         if (long * 9 <= short * 16) return snap(short) ?: short
         val sixteenNine = long * 9 / 16
-        return snap(sixteenNine) ?: snap(long * 135 / 256) ?: snap(short) ?: sixteenNine
+        val dci = if (long * 135 >= short * 256) snap(long * 135 / 256) else null
+        return snap(sixteenNine) ?: dci ?: snap(short) ?: sixteenNine
     }
 
     private fun snap(lines: Int): Int? = CLASSES.firstOrNull { kotlin.math.abs(lines - it) <= it * 6 / 100 }

@@ -33,6 +33,11 @@ class QualityLabelTest {
         assertThat(VideoResolution.classOf(960, 720)).isEqualTo(720)
         assertThat(VideoResolution.classOf(640, 640)).isEqualTo(640)
         assertThat(VideoResolution.classOf(640, 480)).isEqualTo(480)
+        // Just over 16:9 because of rounding (ffmpeg scale=-2:H): still their height.
+        assertThat(VideoResolution.classOf(1366, 768)).isEqualTo(768)
+        assertThat(VideoResolution.classOf(1138, 640)).isEqualTo(640)
+        assertThat(VideoResolution.classOf(712, 400)).isEqualTo(400)
+        assertThat(VideoResolution.classOf(2134, 1200)).isEqualTo(1200)
         assertThat(VideoResolution.classOf(2560, 1080)).isEqualTo(1440)
         assertThat(VideoResolution.classOf(3840, 2160)).isEqualTo(2160)
         assertThat(VideoResolution.classOf(1280, null)).isNull()

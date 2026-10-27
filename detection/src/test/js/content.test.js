@@ -622,6 +622,9 @@ test('referrerFor applies the page referrer policy like the browser', () => {
   assert.equal(r(other, 'no-referrer-when-downgrade'), 'https://site.example/');
   assert.equal(r(insecure, 'unsafe-url'), undefined);
   assert.equal(r(insecure, 'origin-when-cross-origin'), undefined);
+  // Known gap, on the safe side: another origin of the same site counts as another site (Gecko would send the
+  // full URL here), as telling sites apart needs the public suffix list.
+  assert.equal(r('https://media.site.example/v.mp4', 'unsafe-url'), 'https://site.example/');
   assert.equal(content.referrerFor('about:blank', other), undefined);
 });
 

@@ -83,6 +83,16 @@ class HeaderPolicyTest {
     }
 
     @Test
+    fun `a token set again outlives newer one-off cookies past the limit`() {
+        val policy = HeaderPolicy(emptyMap(), "https://cdn.site.com/live/index.m3u8", emptyMap(), null)
+        for (step in 0 until 120) {
+            if (step % 5 == 0) policy.rememberCookies("https://cdn.site.com/live/index.m3u8".toHttpUrl(), headersOf("Set-Cookie", "hdntl=T$step; Path=/"))
+            policy.rememberCookies("https://ads$step.site.com/x".toHttpUrl(), headersOf("Set-Cookie", "__cf_bm=$step; Path=/"))
+            assertThat(policy.headersFor("https://cdn.site.com/live/seg$step.ts".toHttpUrl(), dropAuthorization = false)["Cookie"]).startsWith("hdntl=")
+        }
+    }
+
+    @Test
     fun `a blank authorization is not sent`() {
         val blank = HeaderPolicy(mapOf("Authorization" to " "), "https://api.site.com/m.m3u8", emptyMap(), null)
         assertThat(blank.headersFor("https://api.site.com/seg.ts".toHttpUrl(), dropAuthorization = false)["Authorization"]).isNull()

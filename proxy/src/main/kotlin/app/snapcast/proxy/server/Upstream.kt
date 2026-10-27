@@ -22,8 +22,9 @@ import java.util.concurrent.ConcurrentHashMap
  * playlist naming segments, keys or ads on third-party hosts does not hand them the site's credentials.
  *
  * Cookies the upstream sets while this registration is used (Set-Cookie on a playlist, key or redirect, e.g. a
- * CDN session token) are kept in memory and sent back where they apply, as the browser would; per name, the
- * newest value wins (captured request cookie, then the tab's newer per-host cookie, then a received one).
+ * CDN session token) are kept in memory and sent back where they apply, as the browser would: the received ones
+ * win over the captured request cookie and the tab's per-host cookie, and among them the one with the longest
+ * path, then the oldest (RFC 6265 5.4).
  */
 internal class HeaderPolicy(
     headers: Map<String, String>,
@@ -61,8 +62,12 @@ internal class HeaderPolicy(
         authorization = capturedAuthorization
     }
 
-    /** Received cookies, guarded by itself; never written to disk and gone with the registration. */
-    private val sessionCookies = ArrayList<Cookie>()
+    /**
+     * Received cookies, least recently set first, each with its creation order (kept when it is set again);
+     * guarded by itself, never written to disk and gone with the registration.
+     */
+    private val sessionCookies = ArrayList<ReceivedCookie>()
+    private var nextCreated = 0L
 
     /** Captured Cookie header for a request to [host], or null when none may be sent there. */
     fun cookieFor(host: String): String? {
@@ -79,25 +84,25 @@ internal class HeaderPolicy(
         if (received.isEmpty()) return
         val now = System.currentTimeMillis()
         synchronized(sessionCookies) {
+            sessionCookies.removeAll { it.cookie.expiresAt <= now }
             for (cookie in received) {
-                val index = sessionCookies.indexOfFirst { it.name == cookie.name && it.domain == cookie.domain && it.path == cookie.path }
-                when {
-                    cookie.expiresAt <= now -> if (index >= 0) sessionCookies.removeAt(index)
-                    // A replaced cookie keeps its place (its creation time, for the order below).
-                    index >= 0 -> sessionCookies[index] = cookie
-                    else -> sessionCookies += cookie
-                }
+                val index = sessionCookies.indexOfFirst { it.cookie.name == cookie.name && it.cookie.domain == cookie.domain && it.cookie.path == cookie.path }
+                val created = if (index >= 0) sessionCookies.removeAt(index).created else nextCreated++
+                if (cookie.expiresAt > now) sessionCookies += ReceivedCookie(cookie, created)
             }
+            // Past the limit the least recently set cookie goes, as in a browser (RFC 6265 5.3).
             while (sessionCookies.size > MAX_SESSION_COOKIES) sessionCookies.removeAt(0)
         }
     }
 
     private fun receivedCookies(url: HttpUrl): String? {
         val now = System.currentTimeMillis()
-        val matching = synchronized(sessionCookies) { sessionCookies.filter { it.expiresAt > now && it.matches(url) } }
+        val matching = synchronized(sessionCookies) { sessionCookies.filter { it.cookie.expiresAt > now && it.cookie.matches(url) } }
         // Browser order (RFC 6265 5.4: longer paths first, then older), so a name's first value is the one servers read.
-        return matching.sortedByDescending { it.path.length }.joinToString("; ") { "${it.name}=${it.value}" }.takeIf { it.isNotEmpty() }
+        return matching.sortedWith(BROWSER_ORDER).joinToString("; ") { "${it.cookie.name}=${it.cookie.value}" }.takeIf { it.isNotEmpty() }
     }
+
+    private class ReceivedCookie(val cookie: Cookie, val created: Long)
 
     /**
      * Request headers for [url]. Authorization is only sent to the original host; [dropAuthorization] is set
@@ -125,6 +130,7 @@ internal class HeaderPolicy(
 
     companion object {
         private const val MAX_SESSION_COOKIES = 50
+        private val BROWSER_ORDER = compareByDescending<ReceivedCookie> { it.cookie.path.length }.thenBy { it.created }
 
         /** Hop-by-hop, framing, conditional and content-negotiation headers the proxy controls itself. */
         private val NOT_REPLAYED = setOf(
