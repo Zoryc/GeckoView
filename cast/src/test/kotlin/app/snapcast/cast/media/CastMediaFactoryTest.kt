@@ -76,7 +76,7 @@ class CastMediaFactoryTest {
     }
 
     @Test
-    fun `a variant on another host gets the captured cookie only for the master host`() {
+    fun `a variant on another host is registered with the master as its credentials origin`() {
         val video = hls.copy(
             headers = MediaHeaders(
                 referer = "https://www.example.com/watch",
@@ -90,9 +90,11 @@ class CastMediaFactoryTest {
 
         val request = proxy.streams.single()
         assertThat(request.url).isEqualTo(variant.url)
-        assertThat(request.headers.keys.map { it.lowercase() }).containsNoneOf("cookie", "authorization")
+        // The proxy sends the captured Cookie and Authorization only to the credentials origin's host.
+        assertThat(request.credentialsUrl).isEqualTo(video.url)
+        assertThat(request.headers).containsEntry("Cookie", "sid=42")
+        assertThat(request.headers).containsEntry("Authorization", "Bearer t")
         assertThat(request.headers).containsEntry("Referer", "https://www.example.com/watch")
-        assertThat(request.cookiesByHost).containsEntry("media.example.com", "sid=42")
         assertThat(request.cookiesByHost).containsEntry("subs.example.org", "sub=1")
     }
 

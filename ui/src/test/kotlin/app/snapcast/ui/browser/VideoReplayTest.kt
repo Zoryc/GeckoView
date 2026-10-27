@@ -3,6 +3,7 @@ package app.snapcast.ui.browser
 import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.StreamType
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceTimeBy
@@ -10,6 +11,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class VideoReplayTest {
     private fun video(url: String, detectedAt: Long) =
         DetectedVideo(id = url, tabId = "t", url = url, type = StreamType.HLS, detectedAt = detectedAt)
