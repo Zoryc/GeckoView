@@ -253,4 +253,14 @@ mark 09-reload
 reload_site
 open_list; shot 09-list-after-reload 3
 report "list after reload"
+
+# An "app not responding" during the run: print the main thread's stack (the image allows adb root) so the
+# log shows where it was blocked.
+if adb root >/dev/null 2>&1; then adb wait-for-device; sleep 2; fi
+for f in $(adb shell 'ls /data/anr 2>/dev/null' | tr -d '\r'); do
+  echo "::group::[$LABEL] ANR $f (main thread)"
+  adb shell "cat /data/anr/$f" | awk '/^"main"/{p=1} p{print} p&&/^$/{exit}' | head -n 80
+  echo "::endgroup::"
+  adb shell "rm -f /data/anr/$f" >/dev/null 2>&1 || true
+done
 log "done"
