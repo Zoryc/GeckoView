@@ -230,7 +230,7 @@ internal class PlaybackController(
         if (request?.isPrivate == false) {
             val what = described.httpStatus?.let { "HTTP $it from ${described.failedHost ?: UrlUtils.hostOf(request?.url.orEmpty())}" }
                 ?: described.kind.name
-            diagnostics?.record("player", "$what (${described.detail})")
+            diagnostics?.record("player", "$what (${described.detail})", request?.pageUrl)
         }
         onPlaybackChanged()
     }

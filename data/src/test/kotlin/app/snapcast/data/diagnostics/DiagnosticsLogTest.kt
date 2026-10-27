@@ -16,10 +16,13 @@ class DiagnosticsLogTest {
     @Test
     fun keepsOnlyTheLatestEvents() {
         val log = InMemoryDiagnosticsLog()
-        repeat(25) { log.record("player", "event $it https://cdn.example/s/$it.ts") }
+        repeat(25) { log.record("player", "event $it https://cdn.example/s/$it.ts", "https://www.Site.example:8443/watch?v=$it") }
         val recent = log.recent()
         assertThat(recent).hasSize(20)
         assertThat(recent.first().message).isEqualTo("event 5 cdn.example")
         assertThat(recent.last().message).isEqualTo("event 24 cdn.example")
+        assertThat(recent.last().site).isEqualTo("site.example")
+        log.record("cast", "LOAD_FAILED", null)
+        assertThat(log.recent().last().site).isNull()
     }
 }

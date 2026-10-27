@@ -20,6 +20,10 @@
   const C = root.SnapcastClassify || (typeof require === 'function' ? require('./classify.js') : null);
 
   const CAPTURED_HEADERS = ['Referer', 'User-Agent', 'Origin', 'Cookie', 'Authorization', 'Accept', 'Accept-Language'];
+  const REFERRER_POLICIES = new Set([
+    'no-referrer', 'no-referrer-when-downgrade', 'origin', 'origin-when-cross-origin', 'same-origin',
+    'strict-origin', 'strict-origin-when-cross-origin', 'unsafe-url',
+  ]);
   /** Resource types that can carry media; images, scripts, styles and fonts are never looked at. */
   const RESOURCE_TYPES = ['main_frame', 'sub_frame', 'media', 'xmlhttprequest', 'object', 'other'];
 
@@ -96,6 +100,8 @@
         cookieRefreshes: 0,
         seen: new Map(),
         lastPlaylist: null,
+        /** frameId -> referrer policy from that document's Referrer-Policy response header. */
+        policies: new Map(),
       };
     }
 
@@ -150,6 +156,7 @@
       tab.cookieRefreshes = 0;
       tab.seen = new Map();
       tab.lastPlaylist = null;
+      tab.policies = new Map();
     }
 
     function rememberRequest(requestId, tabId, headers) {
@@ -163,10 +170,16 @@
       }
     }
 
-    /** Keeps the newest Cookie header per host; past maxCookieHosts the least recently used host is dropped. */
+    /**
+     * Keeps the newest Cookie header per host; past maxCookieHosts the least recently used host is dropped. An
+     * over-long header is cut after its last whole cookie (a cut value would replace an intact one when merged).
+     */
     function rememberCookie(tab, host, cookie) {
       if (!host || !isString(cookie)) return;
-      const value = cookie.length > opts.maxCookieLength ? cookie.substring(0, opts.maxCookieLength) : cookie;
+      const value = cookie.length > opts.maxCookieLength
+        ? cookie.substring(0, Math.max(0, cookie.lastIndexOf(';', opts.maxCookieLength))).trim()
+        : cookie;
+      if (!value) return;
       const changed = tab.cookies.get(host) !== value;
       tab.cookies.delete(host);
       tab.cookies.set(host, value);
@@ -310,6 +323,7 @@
         if (!C.isHttpUrl(details.url)) return;
 
         const tab = tabFor(details.tabId);
+        if (details.type === 'main_frame' || details.type === 'sub_frame') rememberPolicy(tab, details);
         const contentType = C.getHeader(details.responseHeaders, 'content-type');
         const size = C.sizeFromHeaders(details.responseHeaders, status);
         const result = C.classify(details.url, contentType, details.type, size);
@@ -336,6 +350,19 @@
       } catch (ignored) {
         // A detector failure must never disturb browsing.
       }
+    }
+
+    /** The last valid token of a document's Referrer-Policy header (Fetch: comma list, last one wins). */
+    function rememberPolicy(tab, details) {
+      const header = C.getHeader(details.responseHeaders, 'referrer-policy');
+      const frameId = typeof details.frameId === 'number' ? details.frameId : 0;
+      let policy = null;
+      for (const token of String(header || '').split(',')) {
+        const value = token.trim().toLowerCase();
+        if (REFERRER_POLICIES.has(value)) policy = value;
+      }
+      if (policy) tab.policies.set(frameId, policy);
+      else tab.policies.delete(frameId);
     }
 
     function onMainFrameDone(details) {
@@ -421,6 +448,11 @@
           case C.MESSAGE.THUMBNAILS_ALL:
             broadcast(tabId, C.MESSAGE.THUMBNAILS);
             return undefined;
+          case C.MESSAGE.POLICY: {
+            const tab = tabs.get(tabId);
+            const frameId = typeof sender.frameId === 'number' ? sender.frameId : 0;
+            return Promise.resolve({ referrerPolicy: (tab && tab.policies.get(frameId)) || null });
+          }
           default:
             return undefined;
         }

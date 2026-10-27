@@ -39,6 +39,13 @@
     'no-referrer', 'no-referrer-when-downgrade', 'origin', 'origin-when-cross-origin', 'same-origin',
     'strict-origin', 'strict-origin-when-cross-origin', 'unsafe-url',
   ]);
+  /** Legacy <meta name="referrer"> keywords the HTML spec still maps to a policy. */
+  const LEGACY_META_POLICIES = {
+    never: 'no-referrer',
+    always: 'unsafe-url',
+    'origin-when-crossorigin': 'origin-when-cross-origin',
+    default: DEFAULT_REFERRER_POLICY,
+  };
   /** Attributes player libraries put a poster URL in (on the <video> or its container). */
   const POSTER_ATTRIBUTES = ['data-poster', 'data-poster-url', 'data-thumbnail', 'data-thumb'];
   /** Layers player libraries draw a poster with (video.js, Plyr, ArtPlayer, Clappr, JW Player, Flowplayer...). */
@@ -105,14 +112,17 @@
     return C.isHttpUrl(url) ? url : undefined;
   }
 
-  /** The document's referrer policy: the last valid token of its <meta name="referrer"> tags, else the default. */
-  function referrerPolicyOf(doc) {
-    let policy = DEFAULT_REFERRER_POLICY;
+  /**
+   * The document's referrer policy, as the HTML spec sets it: [headerPolicy] (from its Referrer-Policy response
+   * header, else the default), then each <meta name="referrer"> whose whole content (or legacy keyword) is a policy.
+   */
+  function referrerPolicyOf(doc, headerPolicy) {
+    let policy = headerPolicy || DEFAULT_REFERRER_POLICY;
     const metas = queryAll(doc, 'meta[name="referrer" i]');
     for (let i = 0; i < metas.length; i++) {
-      for (const token of String(attribute(metas[i], 'content') || '').toLowerCase().split(',')) {
-        if (REFERRER_POLICIES.has(token.trim())) policy = token.trim();
-      }
+      const value = String(attribute(metas[i], 'content') || '').trim().toLowerCase();
+      const mapped = Object.prototype.hasOwnProperty.call(LEGACY_META_POLICIES, value) ? LEGACY_META_POLICIES[value] : value;
+      if (REFERRER_POLICIES.has(mapped)) policy = mapped;
     }
     return policy;
   }
@@ -215,10 +225,11 @@
     if (own) return own;
     // Scans can be frequent on busy pages: the search below is repeated at most every few seconds per element.
     const time = Date.now();
+    const src = text(element.currentSrc) || text(element.src) || '';
     const cached = posterCache && posterCache.get(element);
-    if (cached && time - cached.at < POSTER_CACHE_MS) return cached.url;
+    if (cached && cached.src === src && time - cached.at < POSTER_CACHE_MS) return cached.url;
     const url = findPosterAround(element);
-    if (posterCache) posterCache.set(element, { url, at: time });
+    if (posterCache) posterCache.set(element, { url, src, at: time });
     return url;
   }
 
@@ -548,8 +559,15 @@
     let lastPage = null;
     let lastRescanAt = 0;
     let link = null;
-    /** Elements already drawn into a thumbnail (each is captured once). */
-    const captured = typeof WeakSet === 'function' ? new WeakSet() : new Set();
+    /**
+     * Per element: the source last drawn, its picture (null when it can never be read) and the delivery round
+     * it was last sent in. A source is drawn once; its picture is sent again after a rescan (the app may have
+     * rebuilt its list without it), and an element that plays another source is drawn again.
+     */
+    const captures = typeof WeakMap === 'function' ? new WeakMap() : new Map();
+    let deliveryRound = 0;
+    /** Policy from the document's Referrer-Policy response header (asked of the background page). */
+    let headerPolicy = null;
 
     function location() {
       try {
@@ -576,7 +594,7 @@
         pageUrl: isTop ? url : undefined,
         pageTitle: isTop ? title : undefined,
         frameTitle: title,
-        referrerPolicy: referrerPolicyOf(doc),
+        referrerPolicy: referrerPolicyOf(doc, headerPolicy),
         requestHeaders: C.compact({ 'User-Agent': userAgent() }),
         now,
       };
@@ -647,8 +665,9 @@
     }
 
     /**
-     * One small JPEG of the current frame of [element], or undefined when it has nothing to show yet (no data,
-     * a black frame), is DRM-protected, or its pixels may not be read (cross-origin video without CORS).
+     * One small JPEG of the current frame of [element]; undefined when it has nothing to show yet (no data, a
+     * black frame) or is DRM-protected, so it is tried again later; null when its pixels may never be read
+     * (cross-origin video without CORS).
      */
     function frameOf(element) {
       if (!(element.readyState >= 2) || !(element.videoWidth > 0) || !(element.videoHeight > 0) || element.mediaKeys) return undefined;
@@ -661,26 +680,29 @@
         const context = canvas.getContext('2d');
         context.drawImage(element, 0, 0, width, height);
         if (isDark(context.getImageData(0, 0, width, height).data)) return undefined;
-        captured.add(element);
         return canvas.toDataURL('image/jpeg', THUMBNAIL_QUALITY);
       } catch (ignored) {
-        // SecurityError (tainted canvas): this element can never be captured.
-        captured.add(element);
-        return undefined;
+        // SecurityError (tainted canvas): this source can never be captured.
+        return null;
       }
     }
 
-    /** Captures every loaded <video> of this frame not captured yet and reports the pictures. */
+    /** Sends a picture of every loaded <video> of this frame not sent since the last rescan (drawing each source once). */
     function captureThumbnails() {
       try {
         const context = frameContext();
         const videos = doc.getElementsByTagName('video');
         const items = [];
         for (let i = 0; i < videos.length; i++) {
-          if (captured.has(videos[i])) continue;
-          const thumbnail = frameOf(videos[i]);
-          if (!thumbnail) continue;
-          items.push(...elementReports(videos[i], Object.assign({}, context, { thumbnail })));
+          const element = videos[i];
+          const src = text(element.currentSrc) || text(element.src) || '';
+          let entry = captures.get(element);
+          if (entry && entry.src !== src) entry = undefined;
+          if (entry && entry.round === deliveryRound) continue;
+          const thumbnail = entry ? entry.thumbnail : frameOf(element);
+          if (thumbnail === undefined) continue;
+          captures.set(element, { src, thumbnail, round: deliveryRound });
+          if (thumbnail) items.push(...elementReports(element, Object.assign({}, context, { thumbnail })));
         }
         if (items.length > 0) emit({ type: 'media', items });
       } catch (ignored) {
@@ -695,6 +717,7 @@
       lastRescanAt = time;
       sent.clear();
       lastPage = null;
+      deliveryRound += 1;
       scheduleScan(50);
     }
 
@@ -809,6 +832,16 @@
         // Optional signal.
       }
     }
+
+    // The document's Referrer-Policy header is only visible to the background page; until it answers (before
+    // the first scan, in practice) the default policy applies.
+    sendToBackground({ kind: M.POLICY }).then((reply) => {
+      const policy = reply && typeof reply.referrerPolicy === 'string' ? reply.referrerPolicy : null;
+      if (!policy || !REFERRER_POLICIES.has(policy) || policy === headerPolicy) return;
+      headerPolicy = policy;
+      sent.clear();
+      scheduleScan(50);
+    }, noop);
 
     if (isTop) {
       link = createNativeLink(browser.runtime, {

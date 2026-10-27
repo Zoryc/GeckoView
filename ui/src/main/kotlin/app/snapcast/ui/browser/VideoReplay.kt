@@ -1,10 +1,7 @@
 package app.snapcast.ui.browser
 
 import app.snapcast.core.model.DetectedVideo
-import app.snapcast.core.model.VideoResolution
-import app.snapcast.core.model.VideoVariant
 import app.snapcast.core.util.UrlUtils
-import app.snapcast.player.PlaybackQuality
 
 /**
  * Finding a video again after its page was reloaded to renew an expired link: the new link usually differs only
@@ -20,17 +17,23 @@ internal object VideoReplay {
         return "${url.substringBefore("://").lowercase()}://$host/$path"
     }
 
-    /** The video in [videos] that is [originalUrl] again, found after [since] (the reload), or null. */
+    /**
+     * The video in [videos] that is [originalUrl] again, found after [since] (the reload), or null: the same URL,
+     * else the one renewed link with the same scheme, host and path that keeps the most of the original query
+     * (`?v=111&sig=new` over `?v=222&sig=new` for `?v=111&sig=old`). Null while that choice is ambiguous.
+     */
     fun find(videos: List<DetectedVideo>, originalUrl: String, since: Long): DetectedVideo? {
         val key = keyOf(originalUrl) ?: return null
-        return videos.firstOrNull { it.detectedAt >= since && keyOf(it.url) == key }
+        val fresh = videos.filter { it.detectedAt >= since }
+        fresh.firstOrNull { it.url == originalUrl }?.let { return it }
+        val candidates = fresh.filter { keyOf(it.url) == key }
+        if (candidates.size <= 1) return candidates.firstOrNull()
+        val original = queryPairs(originalUrl)
+        val scored = candidates.map { it to queryPairs(it.url).count { pair -> pair in original } }
+        val best = scored.maxOf { it.second }
+        return scored.filter { it.second == best }.singleOrNull()?.first
     }
 
-    /** The variant of [video] closest to the [quality] that was picked before the reload, or null. */
-    fun variantFor(video: DetectedVideo, quality: PlaybackQuality?): VideoVariant? {
-        quality ?: return null
-        val wanted = VideoResolution.classOf(quality.width, quality.height)
-        return video.variants.firstOrNull { wanted != null && VideoResolution.classOf(it.width, it.height) == wanted }
-            ?: video.variants.firstOrNull { quality.bandwidth != null && it.bandwidth == quality.bandwidth }
-    }
+    private fun queryPairs(url: String): Set<String> =
+        url.substringBefore('#').substringAfter('?', "").split('&').filter { it.isNotEmpty() }.toSet()
 }

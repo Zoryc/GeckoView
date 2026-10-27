@@ -396,7 +396,8 @@ test('the top frame connects, greets the background, scans and reports page meta
   const frame = startFrame({ videos: [el], metas: { 'og:image': 'https://site.example/og.jpg' } });
   const port = frame.runtime.ports[0];
   assert.deepEqual(port.posted, [{ type: 'hello', url: PAGE, title: 'Watch page' }]);
-  assert.deepEqual(frame.runtime.sent[0], { kind: 'snapcast-hello', url: PAGE, title: 'Watch page' });
+  assert.deepEqual(frame.runtime.sent.find((m) => m.kind === 'snapcast-hello'), { kind: 'snapcast-hello', url: PAGE, title: 'Watch page' });
+  assert.ok(frame.runtime.sent.some((m) => m.kind === 'snapcast-policy'));
   assert.deepEqual(frame.observers.instances[0].options, {
     childList: true,
     subtree: true,
@@ -613,10 +614,21 @@ test('referrerFor applies the page referrer policy like the browser', () => {
   assert.equal(content.referrerFor('about:blank', other), undefined);
 });
 
-test('referrerPolicyOf reads the last valid meta referrer token', () => {
-  const metas = [element('meta', {}, { content: 'origin' }), element('meta', {}, { content: 'bogus, No-Referrer' })];
-  const doc = { querySelectorAll: (selector) => (selector.startsWith('meta[name="referrer"') ? metas : []) };
-  assert.equal(content.referrerPolicyOf(doc), 'no-referrer');
+test('referrerPolicyOf follows the HTML rules for meta referrer over the header policy', () => {
+  const docWith = (...contents) => {
+    const metas = contents.map((c) => element('meta', {}, { content: c }));
+    return { querySelectorAll: (selector) => (selector.startsWith('meta[name="referrer"') ? metas : []) };
+  };
+  // The last meta whose whole content is a policy wins; a comma list is not one (only the header uses lists).
+  assert.equal(content.referrerPolicyOf(docWith('origin', 'bogus, no-referrer')), 'origin');
+  assert.equal(content.referrerPolicyOf(docWith('origin', ' No-Referrer ')), 'no-referrer');
+  // Legacy keywords.
+  assert.equal(content.referrerPolicyOf(docWith('never')), 'no-referrer');
+  assert.equal(content.referrerPolicyOf(docWith('always')), 'unsafe-url');
+  assert.equal(content.referrerPolicyOf(docWith('origin-when-crossorigin')), 'origin-when-cross-origin');
+  assert.equal(content.referrerPolicyOf(docWith('default'), 'same-origin'), 'strict-origin-when-cross-origin');
+  // Without a meta, the Referrer-Policy header's policy, else the default.
+  assert.equal(content.referrerPolicyOf(docWith(), 'same-origin'), 'same-origin');
   assert.equal(content.referrerPolicyOf({ querySelectorAll: () => [] }), 'strict-origin-when-cross-origin');
   const report = content.elementReports(video({ currentSrc: 'https://cdn.example/a.mp4' }), context({ referrerPolicy: 'no-referrer' }))[0];
   assert.deepEqual(report.requestHeaders, { 'User-Agent': UA });
@@ -737,4 +749,51 @@ test('a black frame is not captured and is tried again on the next request', () 
   const thumbs = port.posted.filter((m) => m.type === 'media').flatMap((m) => m.items).filter((i) => i.thumbnail);
   assert.deepEqual(thumbs.map((i) => i.url), ['https://cdn.example/a.mp4']);
   assert.equal(drawn.length, 2);
+});
+
+test('a picture is sent again after a rescan without drawing it again, and redrawn for a new source', () => {
+  const drawn = [];
+  const el = video({ currentSrc: 'https://cdn.example/a.mp4', readyState: 4, videoWidth: 640, videoHeight: 360 });
+  const { port } = startCanvasFrame([el], drawn);
+  const thumbs = () => port.posted.filter((m) => m.type === 'media').flatMap((m) => m.items).filter((i) => i.thumbnail);
+
+  port.onMessage.fire({ type: 'thumbnails' });
+  assert.deepEqual(thumbs().map((i) => i.url), ['https://cdn.example/a.mp4']);
+
+  // The app reset its list (e.g. a download link): the rescan replays reports without pictures, the next
+  // request gets the stored picture back.
+  port.posted.length = 0;
+  port.onMessage.fire({ type: 'rescan' });
+  port.onMessage.fire({ type: 'thumbnails' });
+  assert.deepEqual(thumbs().map((i) => i.url), ['https://cdn.example/a.mp4']);
+  assert.equal(drawn.length, 1);
+
+  // The element now plays another video: it is drawn again.
+  port.posted.length = 0;
+  el.currentSrc = 'https://cdn.example/b.mp4';
+  port.onMessage.fire({ type: 'thumbnails' });
+  assert.deepEqual(thumbs().map((i) => i.url), ['https://cdn.example/b.mp4']);
+  assert.equal(drawn.length, 2);
+});
+
+test('the Referrer-Policy header of the document applies to DOM reports', async () => {
+  const runtime = fakeRuntime();
+  runtime.replies['snapcast-hello'] = { messages: [] };
+  runtime.replies['snapcast-policy'] = { referrerPolicy: 'same-origin' };
+  const timers = fakeTimers();
+  const el = video({ currentSrc: 'https://cdn.example/a.mp4' });
+  content.startContent({
+    window: fakeWindow(PAGE, true),
+    document: fakeDocument([el]),
+    browser: { runtime },
+    MutationObserver: fakeObserverClass().Observer,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
+    now: () => 1,
+  });
+  await settle();
+  timers.run();
+  const items = runtime.ports[0].posted.filter((m) => m.type === 'media').flatMap((m) => m.items);
+  // same-origin: no Referer for a cross-origin source.
+  assert.deepEqual(items.at(-1).requestHeaders, { 'User-Agent': UA });
 });

@@ -6,6 +6,7 @@ import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.StreamType
 import app.snapcast.core.model.SubtitleTrack
 import app.snapcast.core.model.VideoVariant
+import app.snapcast.core.util.CookieHeaders
 import app.snapcast.core.util.UrlUtils
 import app.snapcast.proxy.ProxyStreamRequest
 import app.snapcast.proxy.SubtitleSource
@@ -86,11 +87,12 @@ internal object CastMediaFactory {
         if (videoHost == null || UrlUtils.hostOf(streamUrl) == videoHost) {
             return ProxyStreamRequest(streamUrl, headers, video.cookiesByHost, typeHint)
         }
-        val cookie = video.headers.cookie?.takeIf { it.isNotBlank() }
+        // The master host keeps what the proxy's header policy sends it on the master path: the captured cookie
+        // merged with the tab's newer one for that host (newest value per name).
+        val cookie = CookieHeaders.merge(video.headers.cookie, video.cookiesByHost[videoHost])
         return ProxyStreamRequest(
             url = streamUrl,
             headers = headers.filterKeys { name -> HOST_CREDENTIALS.none { it.equals(name, ignoreCase = true) } },
-            // The captured cookie wins for its own host, as the proxy's header policy does on the master path.
             cookiesByHost = if (cookie == null) video.cookiesByHost else video.cookiesByHost + (videoHost to cookie),
             typeHint = typeHint,
         )
@@ -104,19 +106,21 @@ internal object CastMediaFactory {
     }
 
     /**
-     * Headers for fetching a subtitle: the stream's headers, with the cookie of the subtitle's own host (the
-     * stream's cookie is only sent back to the stream's host).
+     * Headers for fetching a subtitle: the stream's headers, with the cookie of the subtitle's own host. The
+     * stream's own credentials (captured Cookie and Authorization) only go back to the stream's host.
      */
     fun subtitleHeaders(video: DetectedVideo, subtitleUrl: String): Map<String, String> {
-        val headers = video.headers.toMap().filterKeys { !it.equals("Cookie", ignoreCase = true) }.toMutableMap()
+        val all = video.headers.toMap()
+        val headers = all.filterKeys { name -> HOST_CREDENTIALS.none { it.equals(name, ignoreCase = true) } }.toMutableMap()
         val host = UrlUtils.hostOf(subtitleUrl)
+        val onStreamHost = host != null && host == UrlUtils.hostOf(video.url)
         val cookie = when {
             host == null -> null
-            video.cookiesByHost[host] != null -> video.cookiesByHost[host]
-            host == UrlUtils.hostOf(video.url) -> video.headers.cookie
-            else -> null
+            onStreamHost -> CookieHeaders.merge(video.headers.cookie, video.cookiesByHost[host])
+            else -> video.cookiesByHost[host]
         }
         cookie?.takeIf { it.isNotBlank() }?.let { headers["Cookie"] = it }
+        if (onStreamHost) all.entries.firstOrNull { it.key.equals("Authorization", ignoreCase = true) }?.let { headers[it.key] = it.value }
         return headers
     }
 

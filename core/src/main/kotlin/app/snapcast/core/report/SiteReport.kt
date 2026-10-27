@@ -77,20 +77,38 @@ data class SiteReport(
         }
 
     /**
-     * A link to a new issue in [repository] ("owner/name") with the report's form filled in. Long diagnostics are
-     * shortened to keep the link within what browsers and GitHub accept; sharing gives the full text.
+     * A link to a new issue in [repository] ("owner/name") with the report's form filled in, at most
+     * [MAX_ISSUE_URL] characters once encoded (GitHub refuses longer links): the details, then the diagnostics
+     * are shortened until it fits, and the full page address gives way to the host. Sharing gives the full text.
      */
     fun issueUrl(repository: String): String {
-        val diagnosticsText = diagnostics.let { if (it.length > MAX_URL_DIAGNOSTICS) it.take(MAX_URL_DIAGNOSTICS) + "\n…(shortened)" else it }
-        val fields = linkedMapOf(
+        val base = "https://github.com/$repository/issues/new?"
+        var siteText = site
+        var detailsText = details.trim()
+        var diagnosticsText = diagnostics
+        fun build(): String = base + linkedMapOf(
             "template" to ISSUE_TEMPLATE,
             "title" to title,
-            "site" to site,
+            "site" to siteText,
             "problem" to kind.label,
-            "details" to details.trim().take(MAX_URL_DETAILS),
+            "details" to detailsText,
             "diagnostics" to diagnosticsText,
-        )
-        return "https://github.com/$repository/issues/new?" + fields.entries.joinToString("&") { (name, value) -> "$name=${encode(value)}" }
+        ).entries.joinToString("&") { (name, value) -> "$name=${encode(value)}" }
+
+        var url = build()
+        if (url.length > MAX_ISSUE_URL && siteText != siteHost) {
+            siteText = siteHost
+            url = build()
+        }
+        while (url.length > MAX_ISSUE_URL && detailsText.isNotEmpty()) {
+            detailsText = shortened(detailsText, url.length - MAX_ISSUE_URL)
+            url = build()
+        }
+        while (url.length > MAX_ISSUE_URL && diagnosticsText.isNotEmpty()) {
+            diagnosticsText = shortened(diagnosticsText, url.length - MAX_ISSUE_URL)
+            url = build()
+        }
+        return url
     }
 
     private fun describe(video: DetectedVideo): String {
@@ -123,11 +141,32 @@ data class SiteReport(
 
     companion object {
         const val ISSUE_TEMPLATE = "site-problem.yml"
+
+        /** GitHub answers 414 above about 8 KB of request line; this leaves room for the rest of it. */
+        const val MAX_ISSUE_URL = 7_500
         private const val MAX_VIDEOS = 10
         private const val MAX_EVENTS = 8
-        private const val MAX_URL_DETAILS = 1_500
-        private const val MAX_URL_DIAGNOSTICS = 3_000
+        private const val SHORTENED = "\n…(shortened, share the report for the full text)"
 
-        private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8).replace("+", "%20")
+        // The (String, String) overload: URLEncoder.encode(String, Charset) only exists from Android 13.
+        private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+
+        /**
+         * [text] shortened so its encoded form loses at least [excess] characters (plus the note saying so), never
+         * splitting a surrogate pair; empty when nothing useful is left.
+         */
+        private fun shortened(text: String, excess: Int): String {
+            val body = text.removeSuffix(SHORTENED)
+            var keep = body.length
+            var saved = 0
+            val target = excess + encode(SHORTENED).length
+            while (keep > 0 && saved < target) {
+                // One code point at a time from the end (a surrogate pair is never split).
+                val start = if (keep > 1 && Character.isLowSurrogate(body[keep - 1]) && Character.isHighSurrogate(body[keep - 2])) keep - 2 else keep - 1
+                saved += encode(body.substring(start, keep)).length
+                keep = start
+            }
+            return if (keep <= 0) "" else body.substring(0, keep) + SHORTENED
+        }
     }
 }

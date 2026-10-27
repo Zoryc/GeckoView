@@ -238,9 +238,13 @@ class PlayerActivity : ComponentActivity() {
         }
 
         override fun onReloadPage() {
-            // The browser (underneath, same process) reloads the page and plays the video again from it.
-            val request = playback?.request ?: return
-            (playerLauncher as? PlayerLauncherImpl)?.requestReload(request)
+            // The browser (underneath, same process) reloads the page and plays the video again from it,
+            // from where it stopped (the renewed link is another URL, so the saved position would not match).
+            val controller = playback ?: return
+            val request = controller.request ?: return
+            val player = controller.player.value
+            val position = player?.takeIf { it.currentMediaItem != null && !it.isCurrentMediaItemLive }?.currentPosition
+            (playerLauncher as? PlayerLauncherImpl)?.requestReload(request.copy(startPositionMs = position?.takeIf { it > 0 }))
             finish()
         }
     }

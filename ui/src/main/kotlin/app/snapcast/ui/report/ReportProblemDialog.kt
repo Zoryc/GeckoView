@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -35,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import app.snapcast.core.report.ProblemKind
@@ -93,8 +95,14 @@ internal fun ReportProblemDialog(
                     maxLines = 5,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = includePageUrl, onCheckedChange = { includePageUrl = it })
+                // The whole row is the consent toggle: tappable, and read as one checkbox with its label.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(value = includePageUrl, role = Role.Checkbox, onValueChange = { includePageUrl = it }),
+                ) {
+                    Checkbox(checked = includePageUrl, onCheckedChange = null)
                     Text(stringResource(R.string.ui_report_include_url), style = MaterialTheme.typography.bodyMedium)
                 }
                 Text(

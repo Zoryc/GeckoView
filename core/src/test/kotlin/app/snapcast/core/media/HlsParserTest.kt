@@ -165,6 +165,21 @@ class HlsParserTest {
     }
 
     @Test
+    fun `an audio-only variant is not a video quality`() {
+        val text = """
+            #EXTM3U
+            #EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720,CODECS="avc1.64001f,mp4a.40.2"
+            v720.m3u8
+            #EXT-X-STREAM-INF:BANDWIDTH=64000,CODECS="mp4a.40.5"
+            audio.m3u8
+            #EXT-X-STREAM-INF:BANDWIDTH=900000
+            unknown.m3u8
+        """.trimIndent()
+        val playlist = assertIs<HlsPlaylist.Master>(HlsParser.parse(text, "https://e.com/m.m3u8"))
+        assertThat(HlsParser.videoVariants(playlist).map { it.url.substringAfterLast('/') }).containsExactly("v720.m3u8", "unknown.m3u8")
+    }
+
+    @Test
     fun `videoVariants are best first and de-duplicated by resolution and bandwidth`() {
         val text = """
             #EXTM3U

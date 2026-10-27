@@ -224,20 +224,22 @@ object VideoResolution {
     private val CLASSES = intArrayOf(4320, 2160, 1440, 1080, 720, 576, 480, 360, 240, 144)
 
     /**
-     * The usual name of a [width] x [height] frame: the height a 16:9 landscape frame with the same detail
-     * would have, snapped to a standard class when within 6 %. 1920x1080, 1920x800 (scope) and 1080x1920
-     * (portrait) are all 1080; a frame with only a height known uses that height.
+     * The usual name of a [width] x [height] frame: its short side, or the height a 16:9 landscape frame as wide
+     * would have, each snapped to a standard class when within 6 % (the larger snapped one wins). 1920x1080,
+     * 1920x800 (scope), 1080x1920 (portrait) and 2048x1080 (DCI) are all 1080; a frame with only a height known
+     * uses that height.
      */
     fun classOf(width: Int?, height: Int?): Int? {
         val w = width?.takeIf { it > 0 }
         val h = height?.takeIf { it > 0 }
-        val lines = when {
-            w != null && h != null -> maxOf(minOf(w, h), maxOf(w, h) * 9 / 16)
-            h != null -> h
-            else -> return null
-        }
-        return CLASSES.firstOrNull { kotlin.math.abs(lines - it) <= it * 6 / 100 } ?: lines
+        if (w == null || h == null) return h?.let { snap(it) ?: it }
+        val short = minOf(w, h)
+        val sixteenNine = maxOf(w, h) * 9 / 16
+        val snapped = listOfNotNull(snap(short), snap(sixteenNine))
+        return snapped.maxOrNull() ?: maxOf(short, sixteenNine)
     }
+
+    private fun snap(lines: Int): Int? = CLASSES.firstOrNull { kotlin.math.abs(lines - it) <= it * 6 / 100 }
 
     fun label(width: Int?, height: Int?): String? = classOf(width, height)?.let { "${it}p" }
 }

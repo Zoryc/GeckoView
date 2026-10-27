@@ -110,6 +110,7 @@ internal fun BrowserScreen(
     val connection by viewModel.castConnection.collectAsStateWithLifecycle()
     val contextMenu by viewModel.contextMenu.collectAsStateWithLifecycle()
     val openedFromHome by viewModel.openedFromHome.collectAsStateWithLifecycle()
+    val failedPosters by viewModel.failedPosters.collectAsStateWithLifecycle()
 
     val addressState = remember { AddressBarState() }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -260,6 +261,7 @@ internal fun BrowserScreen(
             onNeedThumbnails = viewModel::requestThumbnails,
             onPosterFailed = viewModel::posterFailed,
             onDismiss = { showVideoSheet = false },
+            failedPosters = failedPosters,
             onReportProblem = { showReport = true }.takeIf { currentTab != null && !currentTab.isPrivate && !currentTab.isHome },
         )
     }

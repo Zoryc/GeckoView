@@ -2,14 +2,12 @@ package app.snapcast.ui.browser
 
 import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.StreamType
-import app.snapcast.core.model.VideoVariant
-import app.snapcast.player.PlaybackQuality
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 class VideoReplayTest {
-    private fun video(url: String, detectedAt: Long, variants: List<VideoVariant> = emptyList()) =
-        DetectedVideo(id = url, tabId = "t", url = url, type = StreamType.HLS, detectedAt = detectedAt, variants = variants)
+    private fun video(url: String, detectedAt: Long) =
+        DetectedVideo(id = url, tabId = "t", url = url, type = StreamType.HLS, detectedAt = detectedAt)
 
     @Test
     fun `a renewed link differs only in its query`() {
@@ -30,14 +28,16 @@ class VideoReplayTest {
     }
 
     @Test
-    fun `the quality picked before the reload is found again`() {
-        val variants = listOf(
-            VideoVariant(url = "https://cdn.example/1080.m3u8?t=new", width = 1920, height = 1080, bandwidth = 5_000_000),
-            VideoVariant(url = "https://cdn.example/360.m3u8?t=new", width = 640, height = 360, bandwidth = 800_000),
-        )
-        val fresh = video("https://cdn.example/master.m3u8?t=new", 1, variants)
-        assertThat(VideoReplay.variantFor(fresh, PlaybackQuality(640, 360, 800_000))).isEqualTo(variants[1])
-        assertThat(VideoReplay.variantFor(fresh, PlaybackQuality(bandwidth = 5_000_000))).isEqualTo(variants[0])
-        assertThat(VideoReplay.variantFor(fresh, null)).isNull()
+    fun `the same link wins, then the renewed link that keeps the most of the original query`() {
+        val original = "https://cdn.example/hls/master.m3u8?v=111&sig=old"
+        val main = video("https://cdn.example/hls/master.m3u8?v=111&sig=new", detectedAt = 2_000)
+        val preview = video("https://cdn.example/hls/master.m3u8?v=222&sig=new2", detectedAt = 2_000)
+        assertThat(VideoReplay.find(listOf(preview, main), original, since = 1_000)).isEqualTo(main)
+        val same = video(original, detectedAt = 2_000)
+        assertThat(VideoReplay.find(listOf(main, same), original, since = 1_000)).isEqualTo(same)
+        // Two equally good candidates: the user picks.
+        val a = video("https://cdn.example/hls/master.m3u8?t=1", detectedAt = 2_000)
+        val b = video("https://cdn.example/hls/master.m3u8?t=2", detectedAt = 2_000)
+        assertThat(VideoReplay.find(listOf(a, b), "https://cdn.example/hls/master.m3u8?t=0", since = 1_000)).isNull()
     }
 }

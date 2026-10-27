@@ -4,16 +4,20 @@ package app.snapcast.core.util
 object CookieHeaders {
     /**
      * Merges Cookie header values into one, a cookie per name: a later header's value for a name replaces an
-     * earlier one's, so pass them oldest first. Names keep the order they first appeared in. Null when empty.
+     * earlier one's, so pass them oldest first. Within one header the first value of a name is kept, as servers
+     * read it (browsers put the most specific cookie first when a name is set for several paths or domains).
+     * Names keep the order they first appeared in. Null when empty.
      */
     fun merge(vararg headers: String?): String? {
         val byName = LinkedHashMap<String, String>()
         for (header in headers) {
             if (header.isNullOrBlank()) continue
+            val seen = HashSet<String>()
             for (part in header.split(';')) {
                 val pair = part.trim()
                 if (pair.isEmpty()) continue
-                byName[pair.substringBefore('=').trim()] = pair
+                val name = pair.substringBefore('=').trim()
+                if (seen.add(name)) byName[name] = pair
             }
         }
         return byName.values.joinToString("; ").takeIf { it.isNotEmpty() }

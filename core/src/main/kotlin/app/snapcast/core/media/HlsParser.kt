@@ -337,9 +337,22 @@ object HlsParser {
      */
     fun videoVariants(master: HlsPlaylist.Master): List<VideoVariant> =
         master.variants
+            .filterNot(::isAudioOnly)
             .sortedWith(compareByDescending<HlsVariant> { it.height ?: -1 }.thenByDescending { it.bandwidth ?: -1L })
             .distinctBy { Triple(it.width, it.height, it.bandwidth) }
             .map { variant -> variant.toVideoVariant().copy(separateAudio = hasSeparateAudio(master, variant)) }
+
+    /**
+     * A variant with no picture: no resolution and only audio codecs (Apple's guidelines recommend an audio-only
+     * variant in every master). It is not a video quality to label or offer.
+     */
+    private fun isAudioOnly(variant: HlsVariant): Boolean {
+        if (variant.height != null || variant.width != null) return false
+        val codecs = variant.codecs?.split(',')?.map { it.trim().lowercase() }?.filter { it.isNotEmpty() } ?: return false
+        return codecs.isNotEmpty() && codecs.all { codec -> AUDIO_CODECS.any { codec.startsWith(it) } }
+    }
+
+    private val AUDIO_CODECS = listOf("mp4a", "ac-3", "ec-3", "ac-4", "opus", "flac", "mp3", "alac", "dtsc", "dtse", "dtsh", "dtsl")
 
     private fun hasSeparateAudio(master: HlsPlaylist.Master, variant: HlsVariant): Boolean {
         val group = variant.audioGroup ?: return false

@@ -451,6 +451,28 @@ test('a thumbnails request is broadcast to every frame of the tab', () => {
   assert.deepEqual(browser.sent, [{ tabId: TAB, message: { kind: 'snapcast-thumbnails' }, options: undefined }]);
 });
 
+test('a frame learns the Referrer-Policy of its document from the background page', async () => {
+  const { bg } = setup();
+  bg.onSendHeaders({ requestId: 'm', tabId: TAB, frameId: 0, type: 'main_frame', url: PAGE, requestHeaders: [] });
+  bg.onHeadersReceived({
+    requestId: 'm', tabId: TAB, frameId: 0, type: 'main_frame', url: PAGE, statusCode: 200,
+    responseHeaders: [{ name: 'Content-Type', value: 'text/html' }, { name: 'Referrer-Policy', value: 'no-referrer, bogus, Same-Origin' }],
+  });
+  const reply = await bg.onRuntimeMessage({ kind: 'snapcast-policy' }, { tab: { id: TAB }, frameId: 0 });
+  assert.deepEqual(reply, { referrerPolicy: 'same-origin' });
+  const child = await bg.onRuntimeMessage({ kind: 'snapcast-policy' }, { tab: { id: TAB }, frameId: 7 });
+  assert.deepEqual(child, { referrerPolicy: null });
+});
+
+test('an over-long cookie header is kept up to its last whole cookie', () => {
+  const { bg } = setup({ maxCookieLength: 20 });
+  bg.onSendHeaders({
+    requestId: 'c', tabId: TAB, type: 'xmlhttprequest', url: 'https://cdn.example/x',
+    requestHeaders: [{ name: 'Cookie', value: 'a=1; b=2; c=333333333333' }],
+  });
+  assert.equal(bg.tabs.get(TAB).cookies.get('cdn.example'), 'a=1; b=2');
+});
+
 test('the cookie map keeps the most recently used hosts', () => {
   const { bg } = setup();
   const send = (host, cookie) => bg.onSendHeaders({

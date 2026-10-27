@@ -21,6 +21,10 @@ class QualityLabelTest {
         assertThat(VideoResolution.classOf(640, 360)).isEqualTo(360)
         assertThat(VideoResolution.classOf(960, 540)).isEqualTo(540)
         assertThat(VideoResolution.classOf(null, 480)).isEqualTo(480)
+        assertThat(VideoResolution.classOf(4096, 2160)).isEqualTo(2160)
+        assertThat(VideoResolution.classOf(2048, 1080)).isEqualTo(1080)
+        assertThat(VideoResolution.classOf(2560, 1080)).isEqualTo(1440)
+        assertThat(VideoResolution.classOf(3840, 2160)).isEqualTo(2160)
         assertThat(VideoResolution.classOf(1280, null)).isNull()
         assertThat(VideoResolution.classOf(0, 0)).isNull()
     }

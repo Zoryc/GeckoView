@@ -239,6 +239,9 @@ class UrlUtilsTest {
         assertThat(CookieHeaders.merge("a=1; b=2", null, "b=3;c=4", "")).isEqualTo("a=1; b=3; c=4")
         assertThat(CookieHeaders.merge("token=x=y; flag")).isEqualTo("token=x=y; flag")
         assertThat(CookieHeaders.merge(null, " ")).isNull()
+        // Within one header the first value of a name is the one servers read; a later header still replaces it.
+        assertThat(CookieHeaders.merge("sid=specific; sid=general; x=1")).isEqualTo("sid=specific; x=1")
+        assertThat(CookieHeaders.merge("sid=a; sid=b", "sid=new")).isEqualTo("sid=new")
     }
 
     @Test

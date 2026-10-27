@@ -1,6 +1,5 @@
 package app.snapcast.ui.video
 
-import android.util.Log
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -95,7 +94,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val FEEDBACK_MS = 1_500L
-private const val POSTER_TAG = "SnapcastPoster"
 
 /**
  * Bottom sheet listing the videos detected on the current page with their actions. Actions that leave
@@ -112,6 +110,8 @@ fun VideoSheet(
     onNeedThumbnails: () -> Unit,
     onPosterFailed: (DetectedVideo, Throwable) -> Unit,
     onDismiss: () -> Unit,
+    /** Posters of this page that already failed: not requested again. */
+    failedPosters: Set<String> = emptySet(),
     /** Opens "Report a site problem"; null hides the link (private tabs). */
     onReportProblem: (() -> Unit)? = null,
 ) {
@@ -159,6 +159,7 @@ fun VideoSheet(
                             VideoItem(
                                 video = video,
                                 actions = sheetActions,
+                                posterFailed = video.posterUrl in failedPosters,
                                 onPosterFailed = { error -> onPosterFailed(video, error) },
                                 modifier = Modifier.animateItem(),
                             )
@@ -249,6 +250,7 @@ private fun EmptyVideos(isDetectorReady: Boolean, onRescan: () -> Unit) {
 private fun VideoItem(
     video: DetectedVideo,
     actions: VideoActions,
+    posterFailed: Boolean,
     onPosterFailed: (Throwable) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -277,7 +279,7 @@ private fun VideoItem(
 
     Column(modifier = modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row {
-            VideoThumbnail(video, onPosterFailed)
+            VideoThumbnail(video, posterFailed, onPosterFailed)
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -510,11 +512,11 @@ private fun posterHeaders(video: DetectedVideo, posterUrl: String): NetworkHeade
 }
 
 /**
- * The video's poster, else (or when the poster cannot be loaded) the frame captured in the page, else the
- * type icon. A failed poster is logged and reported ([onPosterFailed], which asks the page for a frame).
+ * The video's poster, else (or when the poster cannot be loaded: [posterFailed], or it fails now) the frame
+ * captured in the page, else the type icon. A failure is reported once ([onPosterFailed], which asks for a frame).
  */
 @Composable
-private fun VideoThumbnail(video: DetectedVideo, onPosterFailed: (Throwable) -> Unit) {
+private fun VideoThumbnail(video: DetectedVideo, posterFailed: Boolean, onPosterFailed: (Throwable) -> Unit) {
     Box(
         modifier = Modifier
             .size(width = 120.dp, height = 68.dp)
@@ -528,11 +530,10 @@ private fun VideoThumbnail(video: DetectedVideo, onPosterFailed: (Throwable) -> 
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(32.dp),
         )
-        val poster = video.posterUrl?.takeIf { UrlUtils.isHttp(it) }
-        var posterFailed by remember(poster) { mutableStateOf(false) }
+        val poster = video.posterUrl?.takeIf { UrlUtils.isHttp(it) && !posterFailed }
         val frame = video.frameThumbnail
         val context = LocalContext.current
-        if (poster != null && !posterFailed) {
+        if (poster != null) {
             val request = remember(poster, video.posterReferer, video.headers.userAgent, video.cookiesByHost, video.isPrivate) {
                 ImageRequest.Builder(context)
                     .data(poster)
@@ -546,11 +547,7 @@ private fun VideoThumbnail(video: DetectedVideo, onPosterFailed: (Throwable) -> 
                 model = request,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                onError = { error ->
-                    Log.w(POSTER_TAG, "Poster of ${UrlUtils.hostOf(poster)} failed: ${error.result.throwable}")
-                    posterFailed = true
-                    onPosterFailed(error.result.throwable)
-                },
+                onError = { error -> onPosterFailed(error.result.throwable) },
                 modifier = Modifier.matchParentSize(),
             )
         } else if (frame != null) {

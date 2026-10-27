@@ -61,6 +61,25 @@ class SiteReportTest {
     }
 
     @Test
+    fun `non-ascii details and a long page address still fit the link budget`() {
+        val cyrillic = report(details = "Видео не воспроизводится, ошибка доступа. ".repeat(60), includeUrl = true)
+        val cjk = report(details = "视频无法播放，服务器拒绝访问。".repeat(200))
+        val emoji = report(details = "😀".repeat(3_000))
+        for (r in listOf(cyrillic, cjk, emoji)) {
+            val url = r.issueUrl("Zoryc/Snapcast")
+            assertThat(url.length).isAtMost(SiteReport.MAX_ISSUE_URL)
+            // Still decodable: no half surrogate pair, and the report says it was shortened.
+            val decoded = URLDecoder.decode(url, "UTF-8")
+            assertThat(decoded).contains("(shortened")
+            assertThat(decoded).doesNotContain("\uFFFD")
+        }
+        val longAddress = report(includeUrl = true).copy(pageUrl = "https://www.site.example/watch?" + "q=1&".repeat(3_000))
+        val url = longAddress.issueUrl("Zoryc/Snapcast")
+        assertThat(url.length).isAtMost(SiteReport.MAX_ISSUE_URL)
+        assertThat(URLDecoder.decode(url, "UTF-8")).contains("site=site.example&")
+    }
+
+    @Test
     fun `the issue link fills the form and stays short`() {
         val url = report(details = "x".repeat(10_000)).issueUrl("Zoryc/Snapcast")
         assertThat(url).startsWith("https://github.com/Zoryc/Snapcast/issues/new?template=site-problem.yml&title=site.example%3A%20Video%20won%27t%20play&site=site.example&problem=")

@@ -157,6 +157,23 @@ class CastMediaFactoryTest {
     }
 
     @Test
+    fun `the stream's Authorization only reaches subtitles on the stream's host`() {
+        val withAuth = hls.copy(headers = hls.headers.copy(extra = mapOf("Authorization" to "Bearer t")))
+        val proxy = FakeMediaProxy()
+        CastMediaFactory.proxied(withAuth, variant = null, subtitle = null, proxy = proxy)
+        val sources = proxy.subtitles.filterIsInstance<SubtitleSource.Remote>()
+        assertThat(sources.single { it.url == english.url }.headers).containsEntry("Authorization", "Bearer t")
+        assertThat(sources.single { it.url == french.url }.headers.keys.map { it.lowercase() }).doesNotContain("authorization")
+    }
+
+    @Test
+    fun `a variant on another host keeps the tab's newer cookie for the master host`() {
+        val video = hls.copy(cookiesByHost = mapOf("media.example.com" to "sid=43; edge=1"))
+        val request = CastMediaFactory.streamRequest(video, "https://cdn.example.net/720/index.m3u8")
+        assertThat(request.cookiesByHost).containsEntry("media.example.com", "sid=43; edge=1")
+    }
+
+    @Test
     fun `a chosen subtitle outside the list is appended with the next id`() {
         val extra = SubtitleTrack(id = "x", url = "https://media.example.com/extra.vtt")
         val media = CastMediaFactory.proxied(hls, variant = null, subtitle = extra, proxy = FakeMediaProxy())

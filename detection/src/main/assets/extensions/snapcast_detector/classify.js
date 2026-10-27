@@ -31,6 +31,7 @@
     RESCAN_ALL: 'snapcast-rescan-all',
     THUMBNAILS: 'snapcast-thumbnails',
     THUMBNAILS_ALL: 'snapcast-thumbnails-all',
+    POLICY: 'snapcast-policy',
     HELLO_REQUEST: 'snapcast-hello-request',
   });
 

@@ -518,10 +518,12 @@ internal class CastControllerImpl @Inject constructor(
 
     private suspend fun buildRemote(
         video: DetectedVideo,
-        variant: VideoVariant?,
+        picked: VideoVariant?,
         subtitle: SubtitleTrack?,
         direct: Boolean,
     ): CastMedia {
+        // An HLS subtitle rendition is only declared by the master playlist: a picked variant would lose it.
+        val variant = picked.takeUnless { subtitle?.isHlsRendition == true }
         if (!usesProxy(direct)) return CastMediaFactory.direct(video, variant, subtitle)
         val proxy = lanProxy()
         val localSubtitles = readLocalSubtitles(CastMediaFactory.subtitleCandidates(video, subtitle))

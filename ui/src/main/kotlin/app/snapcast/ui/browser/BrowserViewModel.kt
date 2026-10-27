@@ -1,6 +1,7 @@
 package app.snapcast.ui.browser
 
 import android.content.Context
+import android.util.Log
 import android.view.View
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
@@ -14,7 +15,6 @@ import app.snapcast.cast.CastConnectionState
 import app.snapcast.cast.CastController
 import app.snapcast.cast.CastDeviceInfo
 import app.snapcast.cast.CastErrorKind
-import app.snapcast.cast.CastEvent
 import app.snapcast.cast.CastResult
 import app.snapcast.cast.RemotePlaybackState
 import app.snapcast.core.model.AppSettings
@@ -66,6 +66,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.mozilla.geckoview.GeckoSession
 import javax.inject.Inject
 
+private const val TAG = "SnapcastBrowser"
 private const val SUGGESTION_DEBOUNCE_MS = 150L
 private const val STOP_TIMEOUT_MS = 5_000L
 
@@ -159,6 +160,13 @@ internal class BrowserViewModel @Inject constructor(
     private var lastThumbnailRequestAt = 0L
     private var replayJob: Job? = null
 
+    /**
+     * Posters of the current page that failed to load: not requested again (the list shows the frame capture
+     * instead) and reported once. Forgotten when the selected tab shows another page.
+     */
+    private val _failedPosters = MutableStateFlow<Set<String>>(emptySet())
+    val failedPosters: StateFlow<Set<String>> = _failedPosters.asStateFlow()
+
     init {
         viewModelScope.launch {
             browserTabs.events.collect { event ->
@@ -170,10 +178,7 @@ internal class BrowserViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            castController.events.collect { event ->
-                if (event is CastEvent.Error) diagnostics.record("cast", "${event.kind}: ${event.message}")
-                uiEventChannel.trySend(BrowserUiEvent.Cast(event))
-            }
+            castController.events.collect { uiEventChannel.trySend(BrowserUiEvent.Cast(it)) }
         }
         viewModelScope.launch {
             browserTabs.tabs.collect { tabs ->
@@ -183,6 +188,9 @@ internal class BrowserViewModel @Inject constructor(
         }
         viewModelScope.launch {
             playerLauncher.reloadRequests.collect(::reloadAndReplay)
+        }
+        viewModelScope.launch {
+            selectedTab.map { it?.id to it?.url }.distinctUntilChanged().collect { _failedPosters.value = emptySet() }
         }
     }
 
@@ -314,12 +322,19 @@ internal class BrowserViewModel @Inject constructor(
         browserTabs.selectedTabId.value?.let(videoRepository::requestRescan)
     }
 
-    /** A poster in the video list could not be loaded: note why (host and status only) and ask for a frame. */
+    /**
+     * A poster in the video list could not be loaded: remember it for this page (it is not requested again), note
+     * why once (host and status only, never for a private tab) and ask the page for a frame instead.
+     */
     fun posterFailed(video: DetectedVideo, error: Throwable) {
+        val poster = video.posterUrl ?: return
+        if (poster in _failedPosters.value) return
+        _failedPosters.update { it + poster }
         if (!video.isPrivate) {
-            val host = video.posterUrl?.let(UrlUtils::hostOf) ?: "?"
+            val host = UrlUtils.hostOf(poster) ?: "?"
             val reason = if (error is HttpException) "HTTP ${error.response.code}" else error::class.java.simpleName
-            diagnostics.record("poster", "$reason from $host")
+            Log.w(TAG, "Poster from $host failed: $reason")
+            diagnostics.record("poster", "$reason from $host", video.pageUrl)
         }
         requestThumbnails()
     }
@@ -338,7 +353,10 @@ internal class BrowserViewModel @Inject constructor(
             includePageUrl = includePageUrl,
             environment = environment,
             videos = videos.value,
-            events = diagnostics.recent().map { ReportEvent(it.atMs, it.source, it.message) },
+            // Only this site's failures: a report never tells about other sites the user visited.
+            events = diagnostics.recent()
+                .filter { it.site != null && it.site == UrlUtils.hostOf(tab.url)?.removePrefix("www.") }
+                .map { ReportEvent(it.atMs, it.source, it.message) },
         )
     }
 
@@ -368,7 +386,7 @@ internal class BrowserViewModel @Inject constructor(
 
     private fun recordCastFailure(video: DetectedVideo, result: CastResult) {
         if (result is CastResult.Error && !video.isPrivate) {
-            diagnostics.record("cast", "${result.kind} for ${video.sourceDomain}: ${result.message}")
+            diagnostics.record("cast", "${result.kind} for ${video.sourceDomain}: ${result.message}", video.pageUrl)
         }
     }
 
@@ -380,8 +398,17 @@ internal class BrowserViewModel @Inject constructor(
         CastResult.Error(CastErrorKind.LOAD_FAILED, e.message.orEmpty())
     }
 
-    /** Plays [video] on the phone, pinned to [variant]'s quality when one was picked. */
-    fun playOnPhone(context: Context, video: DetectedVideo, variant: VideoVariant? = null) {
+    /**
+     * Plays [video] on the phone, pinned to [variant]'s quality when one was picked ([quality] when known otherwise,
+     * e.g. after a reload, before the stream's variants are), from [startPositionMs] when given.
+     */
+    fun playOnPhone(
+        context: Context,
+        video: DetectedVideo,
+        variant: VideoVariant? = null,
+        quality: PlaybackQuality? = variant?.let { PlaybackQuality(it.width, it.height, it.bandwidth) },
+        startPositionMs: Long? = null,
+    ) {
         playerLauncher.play(
             context,
             PlaybackRequest(
@@ -395,7 +422,8 @@ internal class BrowserViewModel @Inject constructor(
                 posterUrl = video.posterUrl,
                 pageUrl = video.pageUrl,
                 isPrivate = video.isPrivate,
-                quality = variant?.let { PlaybackQuality(it.width, it.height, it.bandwidth) },
+                quality = quality,
+                startPositionMs = startPositionMs,
             ),
         )
     }
@@ -409,8 +437,8 @@ internal class BrowserViewModel @Inject constructor(
         val pageUrl = request.pageUrl?.takeIf(UrlUtils::isHttp) ?: return
         val tabs = browserTabs.tabs.value
         val sameDocument = { url: String? -> url?.substringBefore('#') == pageUrl.substringBefore('#') }
-        val tab = tabs.firstOrNull { it.id == browserTabs.selectedTabId.value && sameDocument(it.url) }
-            ?: tabs.firstOrNull { sameDocument(it.url) && it.isPrivate == request.isPrivate }
+        val samePlace = { tab: TabState -> sameDocument(tab.url) && tab.isPrivate == request.isPrivate }
+        val tab = tabs.firstOrNull { it.id == browserTabs.selectedTabId.value && samePlace(it) } ?: tabs.firstOrNull(samePlace)
         val since = System.currentTimeMillis()
         val tabId = if (tab != null) {
             browserTabs.selectTab(tab.id)
@@ -427,7 +455,8 @@ internal class BrowserViewModel @Inject constructor(
             }
             uiEventChannel.trySend(
                 if (video != null) {
-                    BrowserUiEvent.PlayOnPhone(video, VideoReplay.variantFor(video, request.quality))
+                    // The stream's variants are usually not known yet: the player matches the quality itself.
+                    BrowserUiEvent.PlayOnPhone(video, request.quality, request.startPositionMs)
                 } else {
                     BrowserUiEvent.ReplayNotFound
                 },
