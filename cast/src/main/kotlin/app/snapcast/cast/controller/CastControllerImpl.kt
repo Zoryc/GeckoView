@@ -162,6 +162,11 @@ internal class CastControllerImpl @Inject constructor(
     private var inBandSubtitleSelection: Job? = null
     private val privateUrls = HashSet<String>()
 
+    /** Page of each recently cast video of a normal tab, by video URL: receiver errors are told about that page. */
+    private val pagesByUrl = object : LinkedHashMap<String, String>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > MAX_PAGES_BY_URL
+    }
+
     private val settings: AppSettings get() = settingsRepository.settings.value
 
     init {
@@ -251,7 +256,7 @@ internal class CastControllerImpl @Inject constructor(
         proxyManager.acquire()
         try {
             val media = buildRemote(video, variant, subtitle = null, direct = false)
-            if (video.isPrivate) privateUrls += video.url
+            remember(video)
             // The service keeps the proxy alive for the new item: it may have stopped itself after the previous
             // item ended, and appendToQueue / insertNext load the item when the receiver holds no media.
             startPlaybackService()
@@ -444,8 +449,8 @@ internal class CastControllerImpl @Inject constructor(
             val first = batch.items.first()
             val startMs = startPosition(first, request.startPositionMs)
             // Recorded before the load so no position of a private-tab video is saved while it starts playing.
-            if (request is CastRequest.Remote && request.video.isPrivate) privateUrls += request.video.url
-            batch.consumed.forEach { if (it.video.isPrivate) privateUrls += it.video.url }
+            if (request is CastRequest.Remote) remember(request.video)
+            batch.consumed.forEach { remember(it.video) }
             // Started while the app is still visible (Android 12+ refuses it from the background, and the LOAD
             // reply may only come seconds later); the service holds the proxy from now on and stops itself if
             // nothing ends up loaded.
@@ -726,7 +731,20 @@ internal class CastControllerImpl @Inject constructor(
 
     private suspend fun runPendingRequest(request: CastRequest) {
         val result = execute(request)
-        if (result is CastResult.Error) _events.tryEmit(CastEvent.Error(result.kind, result.message))
+        if (result is CastResult.Error) {
+            val pageUrl = (request as? CastRequest.Remote)?.video?.takeUnless { it.isPrivate }?.pageUrl
+            _events.tryEmit(CastEvent.Error(result.kind, result.message, pageUrl))
+        }
+    }
+
+    /** Notes where [video] comes from: private videos never have their position saved, others their page kept. */
+    private fun remember(video: DetectedVideo) {
+        if (video.isPrivate) {
+            privateUrls += video.url
+            pagesByUrl.remove(video.url)
+        } else {
+            video.pageUrl?.let { pagesByUrl[video.url] = it }
+        }
     }
 
     private suspend fun observePlayback() {
@@ -767,7 +785,8 @@ internal class CastControllerImpl @Inject constructor(
         val key = "${current.currentItemId}:${current.originalUrl}"
         if (key == lastReceiverErrorKey) return
         lastReceiverErrorKey = key
-        _events.tryEmit(CastEvent.Error(CastErrorKind.LOAD_FAILED, string(R.string.cast_error_playback)))
+        val pageUrl = current.originalUrl?.takeUnless { it in privateUrls }?.let(pagesByUrl::get)
+        _events.tryEmit(CastEvent.Error(CastErrorKind.LOAD_FAILED, string(R.string.cast_error_playback), pageUrl))
     }
 
     /**
@@ -846,6 +865,7 @@ internal class CastControllerImpl @Inject constructor(
         const val SAVE_INTERVAL_MS = 5_000L
         const val RECEIVER_ERROR_SUPPRESS_MS = 5_000L
         const val IN_BAND_TRACK_WAIT_MS = 20_000L
+        const val MAX_PAGES_BY_URL = 32
         const val IDLE_REASON_FINISHED = ReceiverQueue.IDLE_REASON_FINISHED
         const val IDLE_REASON_ERROR = ReceiverQueue.IDLE_REASON_ERROR
 

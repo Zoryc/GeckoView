@@ -733,18 +733,19 @@ test('a thumbnails command captures each loaded video once and asks the other fr
   port.onMessage.fire({ type: 'rescan' });
   port.posted.length = 0;
 
-  port.onMessage.fire({ type: 'thumbnails' });
+  port.onMessage.fire({ type: 'thumbnails', generation: 1 });
   const items = port.posted.filter((m) => m.type === 'media').flatMap((m) => m.items);
   assert.deepEqual(items.map((i) => [i.url, i.isBlob, i.thumbnail]), [
     ['blob:https://site.example/1', true, 'data:image/jpeg;base64,320x180@0.7'],
   ]);
   assert.deepEqual(drawn.map(([source, w, h]) => [source === playing, w, h]), [[true, 320, 180]]);
-  assert.ok(runtime.sent.some((m) => m.kind === 'snapcast-thumbnails-all'));
+  assert.ok(runtime.sent.some((m) => m.kind === 'snapcast-thumbnails-all' && m.generation === 1));
 
-  // Captured once; replays on later rescans do not carry the picture again.
+  // Captured once per list: opening the list again (a rescan, another request) sends no picture again.
   port.posted.length = 0;
-  port.onMessage.fire({ type: 'thumbnails' });
   port.onMessage.fire({ type: 'rescan' });
+  port.onMessage.fire({ type: 'thumbnails', generation: 1 });
+  runtime.onMessage.fire({ kind: 'snapcast-thumbnails', generation: 1 });
   assert.equal(drawn.length, 1);
   assert.ok(port.posted.filter((m) => m.type === 'media').flatMap((m) => m.items).every((i) => !i.thumbnail));
 });
@@ -754,38 +755,72 @@ test('a black frame is not captured and is tried again on the next request', () 
   drawn.dark = true;
   const el = video({ currentSrc: 'https://cdn.example/a.mp4', readyState: 2, videoWidth: 640, videoHeight: 360 });
   const { runtime, port } = startCanvasFrame([el], drawn);
-  port.onMessage.fire({ type: 'thumbnails' });
+  port.onMessage.fire({ type: 'thumbnails', generation: 1 });
   assert.equal(port.posted.filter((m) => m.type === 'media' && m.items.some((i) => i.thumbnail)).length, 0);
   drawn.dark = false;
-  runtime.onMessage.fire({ kind: 'snapcast-thumbnails' });
+  runtime.onMessage.fire({ kind: 'snapcast-thumbnails', generation: 1 });
   const thumbs = port.posted.filter((m) => m.type === 'media').flatMap((m) => m.items).filter((i) => i.thumbnail);
   assert.deepEqual(thumbs.map((i) => i.url), ['https://cdn.example/a.mp4']);
   assert.equal(drawn.length, 2);
 });
 
-test('a picture is sent again after a rescan without drawing it again, and redrawn for a new source', () => {
+test('a picture is drawn again only for a new list or a new source', () => {
   const drawn = [];
   const el = video({ currentSrc: 'https://cdn.example/a.mp4', readyState: 4, videoWidth: 640, videoHeight: 360 });
   const { port } = startCanvasFrame([el], drawn);
   const thumbs = () => port.posted.filter((m) => m.type === 'media').flatMap((m) => m.items).filter((i) => i.thumbnail);
 
-  port.onMessage.fire({ type: 'thumbnails' });
+  port.onMessage.fire({ type: 'thumbnails', generation: 1 });
   assert.deepEqual(thumbs().map((i) => i.url), ['https://cdn.example/a.mp4']);
 
-  // The app reset its list (e.g. a download link): the rescan replays reports without pictures, the next
-  // request gets the stored picture back.
+  // The app reset its list (e.g. a download link): its next request, for the new list, gets the picture again.
   port.posted.length = 0;
   port.onMessage.fire({ type: 'rescan' });
-  port.onMessage.fire({ type: 'thumbnails' });
+  port.onMessage.fire({ type: 'thumbnails', generation: 2 });
   assert.deepEqual(thumbs().map((i) => i.url), ['https://cdn.example/a.mp4']);
-  assert.equal(drawn.length, 1);
+  assert.equal(drawn.length, 2);
 
   // The element now plays another video: it is drawn again.
   port.posted.length = 0;
   el.currentSrc = 'https://cdn.example/b.mp4';
-  port.onMessage.fire({ type: 'thumbnails' });
+  port.onMessage.fire({ type: 'thumbnails', generation: 2 });
   assert.deepEqual(thumbs().map((i) => i.url), ['https://cdn.example/b.mp4']);
-  assert.equal(drawn.length, 2);
+  assert.equal(drawn.length, 3);
+});
+
+test('a video whose pixels can never be read is not drawn again', () => {
+  const drawn = [];
+  const el = video({ currentSrc: 'https://other.example/a.mp4', readyState: 4, videoWidth: 640, videoHeight: 360 });
+  const doc = fakeCanvasDocument([el], drawn);
+  const create = doc.createElement;
+  doc.createElement = (tag) => {
+    const canvas = create(tag);
+    canvas.getContext = () => ({
+      drawImage: (source) => drawn.push([source]),
+      getImageData: () => {
+        throw new Error('SecurityError');
+      },
+    });
+    return canvas;
+  };
+  const runtime = fakeRuntime();
+  runtime.replies['snapcast-hello'] = { messages: [] };
+  const timers = fakeTimers();
+  content.startContent({
+    window: fakeWindow(PAGE, true),
+    document: doc,
+    browser: { runtime },
+    MutationObserver: fakeObserverClass().Observer,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
+    now: () => 1,
+  });
+  timers.run();
+  const port = runtime.ports[0];
+  port.onMessage.fire({ type: 'thumbnails', generation: 1 });
+  port.onMessage.fire({ type: 'thumbnails', generation: 2 });
+  assert.equal(drawn.length, 1);
+  assert.ok(port.posted.filter((m) => m.type === 'media').flatMap((m) => m.items).every((i) => !i.thumbnail));
 });
 
 test('the Referrer-Policy header of the document applies to DOM reports', async () => {

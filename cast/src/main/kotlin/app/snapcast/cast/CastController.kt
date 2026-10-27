@@ -38,7 +38,11 @@ sealed interface CastResult {
 }
 
 sealed interface CastEvent {
-    data class Error(val kind: CastErrorKind, val message: String) : CastEvent
+    /**
+     * A cast failed after [CastController.cast] returned (a cast waiting for a device, or the receiver stopping
+     * with an error). [pageUrl] is the page of the video concerned; null when unknown or from a private tab.
+     */
+    data class Error(val kind: CastErrorKind, val message: String, val pageUrl: String? = null) : CastEvent
 
     data class Started(val title: String) : CastEvent
 

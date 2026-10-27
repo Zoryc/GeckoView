@@ -447,8 +447,8 @@ test('a rescan request is broadcast to every frame of the tab', () => {
 
 test('a thumbnails request is broadcast to every frame of the tab', () => {
   const { bg, browser } = setup();
-  bg.onRuntimeMessage({ kind: 'snapcast-thumbnails-all' }, { tab: { id: TAB }, frameId: 0 });
-  assert.deepEqual(browser.sent, [{ tabId: TAB, message: { kind: 'snapcast-thumbnails' }, options: undefined }]);
+  bg.onRuntimeMessage({ kind: 'snapcast-thumbnails-all', generation: 3 }, { tab: { id: TAB }, frameId: 0 });
+  assert.deepEqual(browser.sent, [{ tabId: TAB, message: { kind: 'snapcast-thumbnails', generation: 3 }, options: undefined }]);
 });
 
 test('a frame learns the Referrer-Policy of its document from the background page', async () => {
@@ -462,6 +462,22 @@ test('a frame learns the Referrer-Policy of its document from the background pag
   assert.deepEqual(reply, { referrerPolicy: 'same-origin' });
   const child = await bg.onRuntimeMessage({ kind: 'snapcast-policy' }, { tab: { id: TAB }, frameId: 7 });
   assert.deepEqual(child, { referrerPolicy: null });
+});
+
+test('the frame policy map keeps the top frame and the newest frames', () => {
+  const { bg } = setup({ maxFramePolicies: 3 });
+  const frame = (frameId, policy) => {
+    const type = frameId === 0 ? 'main_frame' : 'sub_frame';
+    bg.onSendHeaders({ requestId: `f${frameId}`, tabId: TAB, frameId, type, url: PAGE, requestHeaders: [] });
+    bg.onHeadersReceived({
+      requestId: `f${frameId}`, tabId: TAB, frameId, type, url: PAGE, statusCode: 200,
+      responseHeaders: [{ name: 'Content-Type', value: 'text/html' }, { name: 'Referrer-Policy', value: policy }],
+    });
+  };
+  frame(0, 'origin');
+  for (let id = 1; id <= 5; id++) frame(id, 'same-origin');
+  assert.deepEqual([...bg.tabs.get(TAB).policies.keys()], [0, 4, 5]);
+  assert.equal(bg.tabs.get(TAB).policies.get(0), 'origin');
 });
 
 test('an over-long cookie header is kept up to its last whole cookie', () => {

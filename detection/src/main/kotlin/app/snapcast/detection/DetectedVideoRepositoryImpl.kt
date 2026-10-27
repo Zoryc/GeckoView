@@ -92,7 +92,8 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
     }
 
     override fun requestThumbnails(tabId: String) = onMain {
-        tabs[tabId]?.rescanPort()?.let { post(it, ThumbnailsCommand) }
+        val tab = tabs[tabId] ?: return@onMain
+        tab.rescanPort()?.let { post(it, ThumbnailsCommand(tab.generation)) }
     }
 
     override fun clearTab(tabId: String) = onMain {

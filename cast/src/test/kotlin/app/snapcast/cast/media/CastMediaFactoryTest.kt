@@ -167,10 +167,17 @@ class CastMediaFactoryTest {
     }
 
     @Test
-    fun `a variant on another host keeps the tab's newer cookie for the master host`() {
-        val video = hls.copy(cookiesByHost = mapOf("media.example.com" to "sid=43; edge=1"))
+    fun `a variant on another host keeps the master's credentials for the master host`() {
+        val video = hls.copy(
+            headers = hls.headers.copy(extra = mapOf("Authorization" to "Bearer t")),
+            cookiesByHost = mapOf("media.example.com" to "sid=43; edge=1"),
+        )
         val request = CastMediaFactory.streamRequest(video, "https://cdn.example.net/720/index.m3u8")
-        assertThat(request.cookiesByHost).containsEntry("media.example.com", "sid=43; edge=1")
+        // The proxy sends the captured Cookie and Authorization only to the master's host, as when the master is cast.
+        assertThat(request.credentialsUrl).isEqualTo(video.url)
+        assertThat(request.headers).containsEntry("Authorization", "Bearer t")
+        assertThat(request.cookiesByHost).isEqualTo(video.cookiesByHost)
+        assertThat(CastMediaFactory.streamRequest(video, video.url).credentialsUrl).isNull()
     }
 
     @Test

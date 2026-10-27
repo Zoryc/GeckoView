@@ -33,6 +33,8 @@
     maxBufferedMessages: 200,
     maxSeenUrls: 2000,
     maxCookieHosts: 48,
+    /** Referrer policies remembered per tab, one per frame (frames come and go on long-lived pages). */
+    maxFramePolicies: 64,
     maxCookieLength: 8192,
     batchDelayMs: 120,
     maxBatchItems: 50,
@@ -361,8 +363,14 @@
         const value = token.trim().toLowerCase();
         if (REFERRER_POLICIES.has(value)) policy = value;
       }
-      if (policy) tab.policies.set(frameId, policy);
-      else tab.policies.delete(frameId);
+      tab.policies.delete(frameId);
+      if (!policy) return;
+      tab.policies.set(frameId, policy);
+      // Past the limit the oldest frame's policy goes, never the top frame's.
+      for (const key of tab.policies.keys()) {
+        if (tab.policies.size <= opts.maxFramePolicies) break;
+        if (key !== 0) tab.policies.delete(key);
+      }
     }
 
     function onMainFrameDone(details) {
@@ -418,10 +426,10 @@
       }
     }
 
-    /** Sends [kind] to every frame of the tab. */
-    function broadcast(tabId, kind) {
+    /** Sends [message] to every frame of the tab. */
+    function broadcast(tabId, message) {
       try {
-        Promise.resolve(browser.tabs.sendMessage(tabId, { kind })).then(noop, noop);
+        Promise.resolve(browser.tabs.sendMessage(tabId, message)).then(noop, noop);
       } catch (ignored) {
         // A detector failure must never disturb browsing.
       }
@@ -443,10 +451,13 @@
             onFrameReport(tabId, sender, message.message);
             return undefined;
           case C.MESSAGE.RESCAN_ALL:
-            broadcast(tabId, C.MESSAGE.RESCAN);
+            broadcast(tabId, { kind: C.MESSAGE.RESCAN });
             return undefined;
           case C.MESSAGE.THUMBNAILS_ALL:
-            broadcast(tabId, C.MESSAGE.THUMBNAILS);
+            broadcast(tabId, {
+              kind: C.MESSAGE.THUMBNAILS,
+              generation: typeof message.generation === 'number' ? message.generation : 0,
+            });
             return undefined;
           case C.MESSAGE.POLICY: {
             const tab = tabs.get(tabId);

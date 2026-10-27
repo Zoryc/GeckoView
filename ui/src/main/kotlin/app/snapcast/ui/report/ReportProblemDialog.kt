@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -100,9 +102,11 @@ internal fun ReportProblemDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 48.dp)
                         .toggleable(value = includePageUrl, role = Role.Checkbox, onValueChange = { includePageUrl = it }),
                 ) {
                     Checkbox(checked = includePageUrl, onCheckedChange = null)
+                    Spacer(Modifier.width(12.dp))
                     Text(stringResource(R.string.ui_report_include_url), style = MaterialTheme.typography.bodyMedium)
                 }
                 Text(

@@ -187,6 +187,35 @@ class StreamProxyPlaylistTest {
     }
 
     @Test
+    fun `a variant registered for its master sends the master's credentials only to the master host`() {
+        cdn.text(
+            "/v/720.m3u8",
+            "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"${origin.url("/v/key")}\"\n#EXTINF:4,\nseg.ts\n#EXT-X-ENDLIST\n",
+            "application/vnd.apple.mpegurl",
+        )
+        cdn.text("/v/seg.ts", "segment", "video/mp2t")
+        origin.text("/v/key", "0123456789abcdef", "application/octet-stream")
+        val stream = harness.proxy.registerStream(
+            ProxyStreamRequest(
+                url = cdn.url("/v/720.m3u8"),
+                headers = mapOf("Authorization" to "Bearer token", "Cookie" to "site=1"),
+                cookiesByHost = emptyMap(),
+                typeHint = StreamType.HLS,
+                credentialsUrl = origin.url("/v/master.m3u8"),
+            ),
+        )
+
+        proxiedUris(harness.fetch(stream.path).text).forEach { assertThat(harness.fetch(it).code).isEqualTo(200) }
+
+        val variant = cdn.requestsTo("/v/720.m3u8").single()
+        assertThat(variant.headers["Authorization"]).isNull()
+        assertThat(variant.headers["Cookie"]).isNull()
+        val key = origin.requestsTo("/v/key").single()
+        assertThat(key.headers["Authorization"]).isEqualTo("Bearer token")
+        assertThat(key.headers["Cookie"]).isEqualTo("site=1")
+    }
+
+    @Test
     fun `playlists are recognised by sniffing when nothing else tells`() {
         origin.text("/api/get", "#EXTM3U\n#EXTINF:4,\nchunk-1\n#EXT-X-ENDLIST\n", "application/octet-stream")
         val stream = register(origin.url("/api/get?id=5"), typeHint = null)

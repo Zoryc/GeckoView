@@ -15,6 +15,7 @@ import app.snapcast.cast.CastConnectionState
 import app.snapcast.cast.CastController
 import app.snapcast.cast.CastDeviceInfo
 import app.snapcast.cast.CastErrorKind
+import app.snapcast.cast.CastEvent
 import app.snapcast.cast.CastResult
 import app.snapcast.cast.RemotePlaybackState
 import app.snapcast.core.model.AppSettings
@@ -57,7 +58,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
-import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -75,6 +75,8 @@ private const val THUMBNAIL_REQUEST_INTERVAL_MS = 1_500L
 
 /** How long a reloaded page has to show the refused video again before the user is asked to pick it. */
 private const val REPLAY_TIMEOUT_MS = 30_000L
+/** How long the reloaded page's candidates must stay the same before one is played. */
+private const val REPLAY_SETTLE_MS = 2_000L
 
 /** Cookies handed to the phone player travel in an Intent, which has a size limit. */
 private const val MAX_PLAYER_COOKIE_CHARS = 32_000
@@ -161,11 +163,16 @@ internal class BrowserViewModel @Inject constructor(
     private var replayJob: Job? = null
 
     /**
-     * Posters of the current page that failed to load: not requested again (the list shows the frame capture
-     * instead) and reported once. Forgotten when the selected tab shows another page.
+     * Posters that failed to load, per tab: not requested again (the list shows the frame capture instead) and
+     * reported once, while the tab's list still has them. A reload or another page empties the list, and with it
+     * this memory, so the poster is tried again there.
      */
-    private val _failedPosters = MutableStateFlow<Set<String>>(emptySet())
-    val failedPosters: StateFlow<Set<String>> = _failedPosters.asStateFlow()
+    private val failedPostersByTab = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+
+    /** The selected tab's failed posters. */
+    val failedPosters: StateFlow<Set<String>> = combine(browserTabs.selectedTabId, failedPostersByTab) { id, byTab ->
+        id?.let(byTab::get).orEmpty()
+    }.stateIn(viewModelScope, whileSubscribed, emptySet())
 
     init {
         viewModelScope.launch {
@@ -178,7 +185,13 @@ internal class BrowserViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            castController.events.collect { uiEventChannel.trySend(BrowserUiEvent.Cast(it)) }
+            castController.events.collect { event ->
+                // A failure after the cast started (deferred cast, receiver error): noted for its page's reports.
+                if (event is CastEvent.Error && event.pageUrl != null) {
+                    diagnostics.record("cast", "${event.kind}: ${event.message}", event.pageUrl)
+                }
+                uiEventChannel.trySend(BrowserUiEvent.Cast(event))
+            }
         }
         viewModelScope.launch {
             browserTabs.tabs.collect { tabs ->
@@ -190,7 +203,15 @@ internal class BrowserViewModel @Inject constructor(
             playerLauncher.reloadRequests.collect(::reloadAndReplay)
         }
         viewModelScope.launch {
-            selectedTab.map { it?.id to it?.url }.distinctUntilChanged().collect { _failedPosters.value = emptySet() }
+            videoRepository.videosByTab.collect { byTab ->
+                failedPostersByTab.update { current ->
+                    if (current.isEmpty()) return@update current
+                    current.mapNotNull { (tabId, posters) ->
+                        val listed = byTab[tabId].orEmpty().mapNotNullTo(HashSet()) { it.posterUrl }
+                        posters.filterTo(HashSet()) { it in listed }.takeIf { it.isNotEmpty() }?.let { tabId to it }
+                    }.toMap()
+                }
+            }
         }
     }
 
@@ -328,8 +349,8 @@ internal class BrowserViewModel @Inject constructor(
      */
     fun posterFailed(video: DetectedVideo, error: Throwable) {
         val poster = video.posterUrl ?: return
-        if (poster in _failedPosters.value) return
-        _failedPosters.update { it + poster }
+        if (poster in failedPostersByTab.value[video.tabId].orEmpty()) return
+        failedPostersByTab.update { it + (video.tabId to (it[video.tabId].orEmpty() + poster)) }
         if (!video.isPrivate) {
             val host = UrlUtils.hostOf(poster) ?: "?"
             val reason = if (error is HttpException) "HTTP ${error.response.code}" else error::class.java.simpleName
@@ -451,8 +472,8 @@ internal class BrowserViewModel @Inject constructor(
         replayJob?.cancel()
         replayJob = viewModelScope.launch {
             val video = withTimeoutOrNull(REPLAY_TIMEOUT_MS) {
-                videoRepository.videosForTab(tabId).mapNotNull { VideoReplay.find(it, request.url, since) }.first()
-            }
+                VideoReplay.await(videoRepository.videosForTab(tabId), request.url, since, REPLAY_SETTLE_MS)
+            }?.let { picked -> videoRepository.findVideo(tabId, picked.id) ?: picked }
             uiEventChannel.trySend(
                 if (video != null) {
                     // The stream's variants are usually not known yet: the player matches the quality itself.

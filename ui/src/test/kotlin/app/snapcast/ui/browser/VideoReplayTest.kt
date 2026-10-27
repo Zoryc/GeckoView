@@ -3,6 +3,11 @@ package app.snapcast.ui.browser
 import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.StreamType
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
 class VideoReplayTest {
@@ -39,5 +44,34 @@ class VideoReplayTest {
         val a = video("https://cdn.example/hls/master.m3u8?t=1", detectedAt = 2_000)
         val b = video("https://cdn.example/hls/master.m3u8?t=2", detectedAt = 2_000)
         assertThat(VideoReplay.find(listOf(a, b), "https://cdn.example/hls/master.m3u8?t=0", since = 1_000)).isNull()
+    }
+
+    @Test
+    fun `a preview on the same path that shows up first is not played`() = runTest {
+        val original = "https://cdn.example/hls/master.m3u8?v=111&sig=old"
+        val main = video("https://cdn.example/hls/master.m3u8?v=111&sig=new", detectedAt = 2_000)
+        val preview = video("https://cdn.example/hls/master.m3u8?v=222&sig=new2", detectedAt = 2_000)
+        val list = MutableStateFlow(emptyList<DetectedVideo>())
+        val found = async { VideoReplay.await(list, original, since = 1_000, settleMs = 2_000) }
+        list.value = listOf(preview)
+        advanceTimeBy(500)
+        list.value = listOf(preview, main)
+        // A change that is not a new candidate (a title, cookies...) does not delay the choice.
+        advanceTimeBy(1_500)
+        list.value = listOf(preview.copy(title = "Trailer"), main)
+        advanceTimeBy(501)
+        runCurrent()
+        assertThat(found.await()).isEqualTo(main)
+    }
+
+    @Test
+    fun `candidates that stay ambiguous give no video`() = runTest {
+        val list = MutableStateFlow(
+            listOf(
+                video("https://cdn.example/hls/master.m3u8?t=1", detectedAt = 2_000),
+                video("https://cdn.example/hls/master.m3u8?t=2", detectedAt = 2_000),
+            ),
+        )
+        assertThat(VideoReplay.await(list, "https://cdn.example/hls/master.m3u8?t=0", since = 1_000, settleMs = 2_000)).isNull()
     }
 }

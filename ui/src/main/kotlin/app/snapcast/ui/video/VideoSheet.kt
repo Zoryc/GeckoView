@@ -115,8 +115,9 @@ fun VideoSheet(
     /** Opens "Report a site problem"; null hides the link (private tabs). */
     onReportProblem: (() -> Unit)? = null,
 ) {
-    // Asked again whenever a video without poster or frame shows up; the page captures each video once.
-    val missingPictures = videos.filter { it.posterUrl == null && it.frameThumbnail == null }.map { it.id }
+    // Asked again whenever a video without a usable poster or a frame shows up, and on each opening; the page
+    // draws each video once per list.
+    val missingPictures = videos.filter { (it.posterUrl == null || it.posterUrl in failedPosters) && it.frameThumbnail == null }.map { it.id }
     LaunchedEffect(missingPictures) {
         if (missingPictures.isNotEmpty()) onNeedThumbnails()
     }

@@ -571,12 +571,11 @@
     let lastRescanAt = 0;
     let link = null;
     /**
-     * Per element: the source last drawn, its picture (null when it can never be read) and the delivery round
-     * it was last sent in. A source is drawn once; its picture is sent again after a rescan (the app may have
-     * rebuilt its list without it), and an element that plays another source is drawn again.
+     * Per element: the source last drawn, the generation of the app's list it was sent for, and whether its
+     * pixels can never be read. No picture is kept: a source is drawn again only for a new list (the app reset
+     * it) or when the element plays another source.
      */
     const captures = typeof WeakMap === 'function' ? new WeakMap() : new Map();
-    let deliveryRound = 0;
     /** Policy from the document's Referrer-Policy response header (asked of the background page). */
     let headerPolicy = null;
     /** Scans and pictures wait for that answer (at most POLICY_WAIT_MS), so no report has a Referer the page won't send. */
@@ -705,9 +704,10 @@
       }
     }
 
-    /** Sends a picture of every loaded <video> of this frame not sent since the last rescan (drawing each source once). */
-    function captureThumbnails() {
+    /** Sends a picture of every loaded <video> of this frame that the app's list [generation] has not had yet. */
+    function captureThumbnails(generation) {
       if (!policyKnown) return;
+      const list = typeof generation === 'number' ? generation : 0;
       try {
         const context = frameContext();
         const videos = doc.getElementsByTagName('video');
@@ -715,12 +715,11 @@
         for (let i = 0; i < videos.length; i++) {
           const element = videos[i];
           const src = text(element.currentSrc) || text(element.src) || '';
-          let entry = captures.get(element);
-          if (entry && entry.src !== src) entry = undefined;
-          if (entry && entry.round === deliveryRound) continue;
-          const thumbnail = entry ? entry.thumbnail : frameOf(element);
+          const entry = captures.get(element);
+          if (entry && entry.src === src && (entry.tainted || entry.list === list)) continue;
+          const thumbnail = frameOf(element);
           if (thumbnail === undefined) continue;
-          captures.set(element, { src, thumbnail, round: deliveryRound });
+          captures.set(element, { src, list, tainted: thumbnail === null });
           if (thumbnail) items.push(...elementReports(element, Object.assign({}, context, { thumbnail })));
         }
         if (items.length > 0) emit({ type: 'media', items });
@@ -736,7 +735,6 @@
       lastRescanAt = time;
       sent.clear();
       lastPage = null;
-      deliveryRound += 1;
       scheduleScan(50);
     }
 
@@ -746,8 +744,8 @@
      */
     function onCommand(command, confirming) {
       if (command.type === 'thumbnails') {
-        captureThumbnails();
-        sendToBackground({ kind: M.THUMBNAILS_ALL });
+        captureThumbnails(command.generation);
+        sendToBackground({ kind: M.THUMBNAILS_ALL, generation: command.generation });
         return;
       }
       if (command.type !== 'rescan') return;
@@ -837,7 +835,7 @@
           return undefined;
         }
         if (message.kind === M.RESCAN) rescan(true);
-        if (message.kind === M.THUMBNAILS) captureThumbnails();
+        if (message.kind === M.THUMBNAILS) captureThumbnails(message.generation);
       } catch (ignored) {
         // Ignore malformed messages.
       }

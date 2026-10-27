@@ -68,10 +68,10 @@ class SiteReportTest {
         for (r in listOf(cyrillic, cjk, emoji)) {
             val url = r.issueUrl("Zoryc/Snapcast")
             assertThat(url.length).isAtMost(SiteReport.MAX_ISSUE_URL)
-            // Still decodable: no half surrogate pair, and the report says it was shortened.
-            val decoded = URLDecoder.decode(url, "UTF-8")
-            assertThat(decoded).contains("(shortened")
-            assertThat(decoded).doesNotContain("\uFFFD")
+            // No half surrogate pair (URLEncoder writes a lone one as "?", %3F; these details have none), and the
+            // report says it was shortened.
+            assertThat(url.substringAfter("&details=").substringBefore('&')).doesNotContain("%3F")
+            assertThat(URLDecoder.decode(url, "UTF-8")).contains("(shortened")
         }
         // The address the user agreed to share stays; the details are shortened instead.
         assertThat(URLDecoder.decode(cyrillic.issueUrl("Zoryc/Snapcast"), "UTF-8")).contains("site=https://www.site.example/watch/42?user=SECRET-USER&")

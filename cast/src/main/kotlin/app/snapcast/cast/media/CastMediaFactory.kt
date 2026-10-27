@@ -75,28 +75,17 @@ internal object CastMediaFactory {
         variant?.takeUnless { it.separateAudio }?.url ?: video.url
 
     /**
-     * The stream registration. The captured Cookie (and Authorization) belong to [DetectedVideo.url]'s host.
-     * When a variant on another host is registered instead, the cookie moves into the per-host cookies for its
-     * own host and Authorization is dropped, so the variant host gets exactly what it gets when the master is
-     * cast: its own cookies, never the master host's credentials.
+     * The stream registration. The captured Cookie and Authorization belong to [DetectedVideo.url]'s host, also
+     * when a variant on another host is registered instead: each host then gets exactly what it gets when the
+     * master is cast (the variant host its own cookies, the master host, for keys say, its credentials).
      */
-    fun streamRequest(video: DetectedVideo, streamUrl: String): ProxyStreamRequest {
-        val typeHint = video.type.takeUnless { it == StreamType.OTHER }
-        val headers = video.headers.toMap()
-        val videoHost = UrlUtils.hostOf(video.url)
-        if (videoHost == null || UrlUtils.hostOf(streamUrl) == videoHost) {
-            return ProxyStreamRequest(streamUrl, headers, video.cookiesByHost, typeHint)
-        }
-        // The master host keeps what the proxy's header policy sends it on the master path: the captured cookie
-        // merged with the tab's newer one for that host (newest value per name).
-        val cookie = CookieHeaders.merge(video.headers.cookie, video.cookiesByHost[videoHost])
-        return ProxyStreamRequest(
-            url = streamUrl,
-            headers = headers.filterKeys { name -> HOST_CREDENTIALS.none { it.equals(name, ignoreCase = true) } },
-            cookiesByHost = if (cookie == null) video.cookiesByHost else video.cookiesByHost + (videoHost to cookie),
-            typeHint = typeHint,
-        )
-    }
+    fun streamRequest(video: DetectedVideo, streamUrl: String): ProxyStreamRequest = ProxyStreamRequest(
+        url = streamUrl,
+        headers = video.headers.toMap(),
+        cookiesByHost = video.cookiesByHost,
+        typeHint = video.type.takeUnless { it == StreamType.OTHER },
+        credentialsUrl = video.url.takeIf { it != streamUrl },
+    )
 
     /** The video's subtitles without URL duplicates, plus [chosen] when it is not one of them. */
     fun subtitleCandidates(video: DetectedVideo, chosen: SubtitleTrack?): List<SubtitleTrack> {

@@ -224,11 +224,10 @@ object VideoResolution {
     private val CLASSES = intArrayOf(4320, 2160, 1440, 1080, 720, 576, 480, 360, 240, 144)
 
     /**
-     * The usual name of a [width] x [height] frame: its short side, or the height a 16:9 landscape frame as wide
-     * would have, or for a frame wider than 16:9 the height a DCI frame as wide would have (2048 wide is 1080),
-     * each snapped to a standard class when within 6 % (the larger snapped one wins). 1920x1080, 1920x800 (scope),
-     * 1080x1920 (portrait), 2048x1080 and 2048x858 (DCI flat and scope) are all 1080; a frame with only a height
-     * known uses that height.
+     * The usual name of a [width] x [height] frame, snapped to a standard class when within 6 %. A frame up to 16:9
+     * wide is named by its short side (1920x1080, 1080x1920, 1440x1080 and 1024x768 are 1080, 1080, 1080 and 768).
+     * A wider one (scope, DCI) is named by its width: the height a 16:9 or a DCI frame as wide would have
+     * (1920x800, 2048x1080 and 2048x858 are all 1080). A frame with only a height known uses that height.
      */
     fun classOf(width: Int?, height: Int?): Int? {
         val w = width?.takeIf { it > 0 }
@@ -236,10 +235,9 @@ object VideoResolution {
         if (w == null || h == null) return h?.let { snap(it) ?: it }
         val short = minOf(w, h)
         val long = maxOf(w, h)
+        if (long * 9 <= short * 16) return snap(short) ?: short
         val sixteenNine = long * 9 / 16
-        val dci = if (long * 9 > short * 16) long * 135 / 256 else null
-        val snapped = listOfNotNull(snap(short), snap(sixteenNine), dci?.let(::snap))
-        return snapped.maxOrNull() ?: maxOf(short, sixteenNine)
+        return snap(sixteenNine) ?: snap(long * 135 / 256) ?: snap(short) ?: sixteenNine
     }
 
     private fun snap(lines: Int): Int? = CLASSES.firstOrNull { kotlin.math.abs(lines - it) <= it * 6 / 100 }

@@ -65,8 +65,9 @@ Dependency direction: `app → ui → {browser, detection, addons, cast, player}
   detector waits for the policy from the Referrer-Policy header before its first scan. Cookies seen anywhere in the tab (newest value per host) apply to
   every entry. Posters keep the Referer of the document that showed them (`DetectedVideo.posterReferer`).
 * Pictures: posters come from the `poster` attribute, player poster attributes or layers covering the
-  player, or og:image. While the video list is open, the app posts a `thumbnails` command and every frame
-  captures each loaded video once into a 320-pixel JPEG (`DetectedVideo.frameThumbnail`, never sent anywhere).
+  player, or og:image. While the video list is open and some video has no usable picture, the app posts a
+  `thumbnails` command and every frame captures each loaded video once per list into a 320-pixel JPEG
+  (`DetectedVideo.frameThumbnail`, never sent anywhere; the page keeps none).
 * Quality: an adaptive stream's label comes from its variants only (`qualityLabel`, `hasQualityRange`),
   never from the page player's current size.
 * DRM: EME permission requests (`PERMISSION_MEDIA_KEY_SYSTEM_ACCESS`, surfaced as

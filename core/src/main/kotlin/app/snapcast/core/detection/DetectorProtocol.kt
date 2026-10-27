@@ -105,10 +105,11 @@ data object RescanCommand : NativeCommand
 /**
  * Ask every frame for one small frame capture of each loaded `<video>` (sent while the video list is open,
  * so the capture only happens when someone looks at it). Answered with media reports carrying [MediaReport.thumbnail].
+ * A frame sends each video's picture once per [generation] of the app's list (it changes when the list is reset).
  */
 @Serializable
 @SerialName("thumbnails")
-data object ThumbnailsCommand : NativeCommand
+data class ThumbnailsCommand(val generation: Int) : NativeCommand
 
 object DetectorProtocol {
     val json: Json = Json {

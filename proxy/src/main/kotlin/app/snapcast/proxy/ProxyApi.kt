@@ -24,6 +24,11 @@ data class ProxyStreamRequest(
     val cookiesByHost: Map<String, String> = emptyMap(),
     /** Known type; null lets the proxy decide from Content-Type / URL / body sniffing. */
     val typeHint: StreamType? = null,
+    /**
+     * The URL the captured Cookie and Authorization were sent to, when it is not [url] (the master playlist when
+     * one of its variants is registered): only that URL's host gets them.
+     */
+    val credentialsUrl: String? = null,
 )
 
 data class ProxiedStream(

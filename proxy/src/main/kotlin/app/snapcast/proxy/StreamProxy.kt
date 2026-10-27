@@ -89,7 +89,7 @@ class StreamProxy(
     }
 
     fun registerStream(request: ProxyStreamRequest): ProxiedStream {
-        val policy = HeaderPolicy(request.headers, request.url, request.cookiesByHost, config.defaultUserAgent)
+        val policy = HeaderPolicy(request.headers, request.credentialsUrl ?: request.url, request.cookiesByHost, config.defaultUserAgent)
         val id = registry.add(Registration.Stream(request, policy))
         val name = ProxyRoutes.streamName(request.url, ProxyRoutes.typeOf(request.url, request.typeHint))
         return ProxiedStream(id, routes.stream(id, name))
