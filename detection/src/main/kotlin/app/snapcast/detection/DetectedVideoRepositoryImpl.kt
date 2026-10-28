@@ -12,6 +12,7 @@ import app.snapcast.core.detection.MediaMessage
 import app.snapcast.core.detection.MediaReport
 import app.snapcast.core.detection.PageMessage
 import app.snapcast.core.detection.NativeCommand
+import app.snapcast.core.detection.RefreshCommand
 import app.snapcast.core.detection.RescanCommand
 import app.snapcast.core.detection.ThumbnailsCommand
 import app.snapcast.core.model.DetectedVideo
@@ -89,6 +90,17 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
 
     override fun requestRescan(tabId: String) = onMain {
         tabs[tabId]?.rescanPort()?.let(::postRescan)
+    }
+
+    override fun refresh(tabId: String) = onMain {
+        val tab = tabs[tabId] ?: return@onMain
+        // Same document: its media session title stays, and the announcer is kept (videos that come back
+        // do not pulse the video button again).
+        val mediaTitle = tab.mediaTitle
+        tab.resetDocument(tab.collector.pageUrl)
+        tab.mediaTitle = mediaTitle
+        publish()
+        tab.rescanPort()?.let { post(it, RefreshCommand) }
     }
 
     override fun requestThumbnails(tabId: String) = onMain {

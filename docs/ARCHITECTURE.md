@@ -59,7 +59,10 @@ Dependency direction: `app → ui → {browser, detection, addons, cast, player}
   the right `GeckoSession` (`MessageSender.session`).
 * Native side: `session.webExtensionController.setMessageDelegate(extension, delegate, "snapcast")` per
   session; the delegate's `onConnect(port)` installs a `PortDelegate`. A tab's list is reset on
-  `SessionObserver.onPageStart`.
+  `SessionObserver.onPageStart`, and by the list's Refresh button (`refresh` command): every frame reports
+  what the page has now without replaying what it sent before, the background page forgets what it reported,
+  and a stream it reported earlier comes back when the page requests something under its directory (its
+  next segment), so a playing stream is listed again while the page's earlier ones are not.
 * Headers: what a network request really sent is authoritative. A DOM find carries only the Referer the
   page's referrer policy would send, as GeckoView applies it. GeckoView ignores relaxing policies (unsafe-url,
   no-referrer-when-downgrade, origin-when-cross-origin) for other sites; without the public suffix list the

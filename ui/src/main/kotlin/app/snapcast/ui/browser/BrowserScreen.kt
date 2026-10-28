@@ -258,7 +258,7 @@ internal fun BrowserScreen(
             videos = videos,
             isDetectorReady = detectorReady,
             actions = videoActions,
-            onRescan = viewModel::rescanVideos,
+            onRefresh = viewModel::refreshVideos,
             onNeedThumbnails = viewModel::requestThumbnails,
             onPosterFailed = viewModel::posterFailed,
             onDismiss = { showVideoSheet = false },

@@ -535,6 +535,45 @@ test('an app rescan command rescans this frame and asks the background to rescan
   assert.equal(port.posted.filter((m) => m.type === 'media').length, 1);
 });
 
+test('a refresh command forgets what was sent and reports only what the page has now', () => {
+  const old = video({ currentSrc: 'https://cdn.example/a.mp4' });
+  const frame = startFrame({ videos: [old] });
+  const port = frame.runtime.ports[0];
+  frame.timers.run();
+  port.onMessage.fire({ type: 'rescan' });
+  frame.timers.run();
+  // A stream the background relayed earlier, then the page swaps its video.
+  frame.runtime.onMessage.fire({ kind: 'snapcast-deliver', message: { type: 'media', items: [{ url: 'https://cdn.example/old.m3u8', source: 'network' }] } });
+  frame.doc.videos.splice(0, 1, video({ currentSrc: 'https://cdn.example/b.mp4' }));
+
+  frame.advance(5000);
+  port.posted.length = 0;
+  port.onMessage.fire({ type: 'refresh' });
+  assert.ok(frame.runtime.sent.some((m) => m.kind === 'snapcast-refresh-all'));
+  frame.timers.run();
+  const urls = () => port.posted.filter((m) => m.type === 'media').flatMap((m) => m.items).map((i) => i.url);
+  assert.deepEqual(urls(), ['https://cdn.example/b.mp4']);
+
+  // Opening the list later replays only what was sent since the refresh.
+  frame.advance(5000);
+  port.posted.length = 0;
+  port.onMessage.fire({ type: 'rescan' });
+  frame.timers.run();
+  assert.ok(urls().every((url) => url === 'https://cdn.example/b.mp4'));
+});
+
+test('a refresh that is the first message on a port replays nothing sent before', () => {
+  const frame = startFrame({ videos: [] });
+  const port = frame.runtime.ports[0];
+  frame.timers.run();
+  frame.runtime.onMessage.fire({ kind: 'snapcast-deliver', message: { type: 'media', items: [{ url: 'https://cdn.example/old.m3u8', source: 'network' }] } });
+  port.posted.length = 0;
+  port.onMessage.fire({ type: 'refresh' });
+  frame.timers.run();
+  assert.deepEqual(port.posted.filter((m) => m.type === 'media'), []);
+  assert.ok(port.posted.some((m) => m.type === 'hello'));
+});
+
 test('child frames report to the background and never connect to the app', () => {
   const el = video({ currentSrc: 'https://cdn.example/embed.mp4' });
   const frame = startFrame({ url: 'https://player.example/embed', isTop: false, videos: [el], title: 'Embed title' });

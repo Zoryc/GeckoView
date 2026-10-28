@@ -254,6 +254,15 @@ reload_site
 open_list; shot 09-list-after-reload 3
 report "list after reload"
 
+# Refresh the list: it starts over from what the page has now; the page's own <video> is listed again.
+mark 10-refresh
+if tap "^Refresh list$" 10; then
+  sleep 5; shot 10-list-refreshed 1; report "list after refresh"
+  if find_center "Big Buck Bunny" >/dev/null; then log "refresh: page video listed again"; else log "REFRESH LOST the page video"; fi
+else
+  log "no Refresh list button"
+fi
+
 # An "app not responding" of Snapcast during the run: print the main thread's stack (the image allows adb root)
 # so the log shows where it was blocked. Other processes' traces (system apps while booting) are skipped.
 if adb root >/dev/null 2>&1; then adb wait-for-device; sleep 2; fi
