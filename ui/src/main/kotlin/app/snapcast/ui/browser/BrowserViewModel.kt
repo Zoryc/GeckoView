@@ -340,11 +340,6 @@ internal class BrowserViewModel @Inject constructor(
         browserTabs.selectedTabId.value?.let(videoRepository::requestRescan)
     }
 
-    /** The list's Refresh button: start the selected tab's list over from what its page has now. */
-    fun refreshVideos() {
-        browserTabs.selectedTabId.value?.let(videoRepository::refresh)
-    }
-
     /**
      * A poster in the video list could not be loaded: remember it for this page (it is not requested again), note
      * why once (host and status only, never for a private tab) and ask the page for a frame instead.

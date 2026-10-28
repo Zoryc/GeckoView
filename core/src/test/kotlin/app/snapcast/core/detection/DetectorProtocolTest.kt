@@ -96,16 +96,6 @@ class DetectorProtocolTest {
     }
 
     @Test
-    fun `encodes refresh and thumbnails commands`() {
-        val refresh = Json.parseToJsonElement(DetectorProtocol.encode(RefreshCommand)) as JsonObject
-        assertThat(refresh["type"]?.jsonPrimitive?.content).isEqualTo("refresh")
-        assertThat(refresh.keys).containsExactly("type")
-        val thumbnails = Json.parseToJsonElement(DetectorProtocol.encode(ThumbnailsCommand(3))) as JsonObject
-        assertThat(thumbnails["type"]?.jsonPrimitive?.content).isEqualTo("thumbnails")
-        assertThat(thumbnails["generation"]?.jsonPrimitive?.content).isEqualTo("3")
-    }
-
-    @Test
     fun `serial names match the extension protocol`() {
         fun typeOf(message: DetectorMessage): String {
             val obj = DetectorProtocol.json.encodeToJsonElement(DetectorMessage.serializer(), message) as JsonObject

@@ -439,48 +439,6 @@ test('only the top frame may say hello or update the page', () => {
   assert.equal(bg.onRuntimeMessage('text', { tab: { id: TAB }, frameId: 0 }), undefined);
 });
 
-test('after a refresh, streams the page still loads come back and new requests are reported again', async () => {
-  const { bg, browser, timers } = setup();
-  await hello(bg);
-  const hls = { 'Content-Type': 'application/vnd.apple.mpegurl' };
-  for (const url of [
-    'https://cdn.example/ep1/master.m3u8',
-    'https://cdn.example/ep1/720/index.m3u8',
-    'https://cdn.example/ep2/master.m3u8',
-    'https://cdn.example/ep2/720/index.m3u8',
-    'https://cdn.example/root.m3u8',
-  ]) request(bg, { type: 'xmlhttprequest', url, responseHeaders: hls });
-  request(bg, { type: 'xmlhttprequest', url: 'https://cdn.example/ep2/720/seg1.ts', responseHeaders: { 'Content-Type': 'video/mp2t' } });
-  timers.run();
-  // Not delivered yet when the refresh comes: dropped with the rest.
-  request(bg, { type: 'xmlhttprequest', url: 'https://cdn.example/late.m3u8', responseHeaders: hls });
-  browser.sent.length = 0;
-
-  bg.onRuntimeMessage({ kind: 'snapcast-refresh-all' }, { tab: { id: TAB }, frameId: 0 });
-  assert.deepEqual(browser.sent, [{ tabId: TAB, message: { kind: 'snapcast-rescan' }, options: undefined }]);
-  timers.run();
-  assert.deepEqual(deliveredItems(browser), []);
-
-  // The playing episode's next segment brings back its master and variant playlists, once.
-  request(bg, { type: 'xmlhttprequest', url: 'https://cdn.example/ep2/720/seg2.ts', responseHeaders: { 'Content-Type': 'video/mp2t' } });
-  request(bg, { type: 'xmlhttprequest', url: 'https://cdn.example/ep2/720/seg3.ts', responseHeaders: { 'Content-Type': 'video/mp2t' } });
-  timers.run();
-  assert.deepEqual(deliveredItems(browser).map((i) => i.url), ['https://cdn.example/ep2/master.m3u8', 'https://cdn.example/ep2/720/index.m3u8']);
-
-  // A stream requested again is reported again; one at the host's root is not revived by other requests.
-  browser.sent.length = 0;
-  request(bg, { type: 'xmlhttprequest', url: 'https://cdn.example/ep1/master.m3u8', responseHeaders: hls });
-  request(bg, { type: 'xmlhttprequest', url: 'https://cdn.example/other.ts', responseHeaders: { 'Content-Type': 'video/mp2t' } });
-  timers.run();
-  assert.deepEqual(deliveredItems(browser).map((i) => i.url), ['https://cdn.example/ep1/master.m3u8']);
-});
-
-test('only the top frame can refresh the list', () => {
-  const { bg, browser } = setup();
-  bg.onRuntimeMessage({ kind: 'snapcast-refresh-all' }, { tab: { id: TAB }, frameId: 3 });
-  assert.deepEqual(browser.sent, []);
-});
-
 test('a rescan request is broadcast to every frame of the tab', () => {
   const { bg, browser } = setup();
   bg.onRuntimeMessage({ kind: 'snapcast-rescan-all' }, { tab: { id: TAB }, frameId: 0 });

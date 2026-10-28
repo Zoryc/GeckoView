@@ -106,7 +106,7 @@ fun VideoSheet(
     videos: List<DetectedVideo>,
     isDetectorReady: Boolean,
     actions: VideoActions,
-    onRefresh: () -> Unit,
+    onRescan: () -> Unit,
     onNeedThumbnails: () -> Unit,
     onPosterFailed: (DetectedVideo, Throwable) -> Unit,
     onDismiss: () -> Unit,
@@ -143,7 +143,7 @@ fun VideoSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.animateContentSize()) {
-            SheetHeader(count = videos.size, onRefresh = onRefresh)
+            SheetHeader(count = videos.size, onRescan = onRescan)
             HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
             AnimatedContent(
                 targetState = videos.isEmpty(),
@@ -153,7 +153,7 @@ fun VideoSheet(
                 modifier = Modifier.weight(1f, fill = false),
             ) { empty ->
                 if (empty) {
-                    EmptyVideos(isDetectorReady = isDetectorReady, onRefresh = onRefresh)
+                    EmptyVideos(isDetectorReady = isDetectorReady, onRescan = onRescan)
                 } else {
                     LazyColumn(contentPadding = PaddingValues(bottom = if (onReportProblem != null) 0.dp else 16.dp)) {
                         items(videos, key = { it.id }) { video ->
@@ -187,7 +187,7 @@ fun VideoSheet(
 }
 
 @Composable
-private fun SheetHeader(count: Int, onRefresh: () -> Unit) {
+private fun SheetHeader(count: Int, onRescan: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -202,14 +202,14 @@ private fun SheetHeader(count: Int, onRefresh: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        IconButton(onClick = onRefresh) {
-            Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.ui_video_refresh))
+        IconButton(onClick = onRescan) {
+            Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.ui_video_rescan))
         }
     }
 }
 
 @Composable
-private fun EmptyVideos(isDetectorReady: Boolean, onRefresh: () -> Unit) {
+private fun EmptyVideos(isDetectorReady: Boolean, onRescan: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -238,7 +238,7 @@ private fun EmptyVideos(isDetectorReady: Boolean, onRefresh: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-        OutlinedButton(onClick = onRefresh) {
+        OutlinedButton(onClick = onRescan) {
             Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.ui_video_rescan))

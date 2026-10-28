@@ -103,14 +103,6 @@ sealed interface NativeCommand
 data object RescanCommand : NativeCommand
 
 /**
- * The app cleared the tab's list (its Refresh button): every frame reports what the page has now, without
- * replaying what was sent before; streams the page still loads are reported again as it requests them.
- */
-@Serializable
-@SerialName("refresh")
-data object RefreshCommand : NativeCommand
-
-/**
  * Ask every frame for one small frame capture of each loaded `<video>` (sent while the video list is open,
  * so the capture only happens when someone looks at it). Answered with media reports carrying [MediaReport.thumbnail].
  * A frame sends each video's picture once per [generation] of the app's list (it changes when the list is reset).

@@ -29,7 +29,6 @@
     DELIVER: 'snapcast-deliver',
     RESCAN: 'snapcast-rescan',
     RESCAN_ALL: 'snapcast-rescan-all',
-    REFRESH_ALL: 'snapcast-refresh-all',
     THUMBNAILS: 'snapcast-thumbnails',
     THUMBNAILS_ALL: 'snapcast-thumbnails-all',
     POLICY: 'snapcast-policy',

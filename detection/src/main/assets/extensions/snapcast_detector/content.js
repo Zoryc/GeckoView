@@ -440,11 +440,6 @@
       for (const message of C.mergeMessages(log, 50)) post(target, message);
     }
 
-    function forget() {
-      log = [];
-      logItems = 0;
-    }
-
     function scheduleReconnect() {
       if (timer !== null || attempts >= maxAttempts) return;
       const delay = Math.min(500 * Math.pow(2, attempts), 15000);
@@ -461,8 +456,6 @@
       const confirming = !confirmed;
       if (confirming) {
         confirmed = true;
-        // A refresh starts the app's list over: what was sent before must not come back with this replay.
-        if (message && message.type === 'refresh') forget();
         replay(source);
       }
       if (message && typeof message === 'object' && typeof message.type === 'string') {
@@ -527,8 +520,6 @@
       replay() {
         if (port) replay(port);
       },
-      /** Forgets the logged messages: later replays only carry what is sent from now on. */
-      forget,
       /** Connects again now (page restored from the back/forward cache, tab shown again). */
       reconnect() {
         attempts = 0;
@@ -755,13 +746,6 @@
       if (command.type === 'thumbnails') {
         captureThumbnails(command.generation);
         sendToBackground({ kind: M.THUMBNAILS_ALL, generation: command.generation });
-        return;
-      }
-      if (command.type === 'refresh') {
-        // The app cleared its list: report what the page has now, never what was sent before.
-        link.forget();
-        rescan(false);
-        sendToBackground({ kind: M.REFRESH_ALL });
         return;
       }
       if (command.type !== 'rescan') return;

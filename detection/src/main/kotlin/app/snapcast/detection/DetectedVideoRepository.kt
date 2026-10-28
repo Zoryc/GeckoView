@@ -28,12 +28,6 @@ interface DetectedVideoRepository {
     fun requestRescan(tabId: String)
 
     /**
-     * Starts the tab's list over from what its page has now (the list's Refresh button): videos the page no
-     * longer shows or loads are gone; a stream it still loads comes back with its next request.
-     */
-    fun refresh(tabId: String)
-
-    /**
      * Asks the tab's frames for one small frame capture of each loaded video ([DetectedVideo.frameThumbnail]),
      * used where there is no poster or it does not load. Call it only while the list is shown: capturing costs
      * a little work in the page, so it never happens on its own.

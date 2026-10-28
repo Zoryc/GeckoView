@@ -35,8 +35,6 @@
     maxCookieHosts: 48,
     /** Referrer policies remembered per tab, one per frame (frames come and go on long-lived pages). */
     maxFramePolicies: 64,
-    /** Streams remembered per tab, so a refresh of the app's list can bring back the ones still loading. */
-    maxStreams: 64,
     maxCookieLength: 8192,
     batchDelayMs: 120,
     maxBatchItems: 50,
@@ -106,10 +104,6 @@
         lastPlaylist: null,
         /** frameId -> referrer policy from that document's Referrer-Policy response header. */
         policies: new Map(),
-        /** dedupe key -> {report, dir} of the streams reported for this page, oldest first. */
-        streams: new Map(),
-        /** After a refresh of the app's list: the streams reported again since, else null. */
-        revived: null,
       };
     }
 
@@ -165,8 +159,6 @@
       tab.seen = new Map();
       tab.lastPlaylist = null;
       tab.policies = new Map();
-      tab.streams = new Map();
-      tab.revived = null;
     }
 
     function rememberRequest(requestId, tabId, headers) {
@@ -215,50 +207,6 @@
       }
       tab.seen.set(key, size);
       return true;
-    }
-
-    /** The directory of [url] (with its trailing slash), or null at the host's root (too broad to match on). */
-    function directoryOf(url) {
-      const base = C.stripFragment(url).split('?')[0];
-      const hostEnd = base.indexOf('/', base.indexOf('://') + 3);
-      const slash = base.lastIndexOf('/');
-      return hostEnd < 0 || slash <= hostEnd ? null : base.slice(0, slash + 1);
-    }
-
-    function rememberStream(tab, report) {
-      const key = C.dedupeKey(report.url);
-      tab.streams.delete(key);
-      tab.streams.set(key, { report, dir: directoryOf(report.url) });
-      while (tab.streams.size > opts.maxStreams) tab.streams.delete(tab.streams.keys().next().value);
-      if (tab.revived) tab.revived.add(key);
-    }
-
-    /**
-     * After a refresh of the app's list, a stream the page still loads (a request under its directory, such as
-     * its next segment, or a variant playlist under its master's) is reported again, once.
-     */
-    function reviveStreams(tabId, tab, url) {
-      if (!tab.revived || tab.streams.size === 0) return;
-      const key = C.dedupeKey(url);
-      for (const [streamKey, stream] of tab.streams) {
-        if (streamKey === key || tab.revived.has(streamKey) || !stream.dir || !url.startsWith(stream.dir)) continue;
-        tab.revived.add(streamKey);
-        tab.seen.set(streamKey, typeof stream.report.size === 'number' ? stream.report.size : null);
-        queueReport(tabId, tab, Object.assign({}, stream.report, { cookiesByHost: cookiesOf(tab), timestamp: now() }));
-      }
-    }
-
-    /**
-     * The app cleared its list to rebuild it from what the page has now: forget what was reported (and not
-     * delivered yet), so what the page loads from now on is reported again, and streams it still loads come back.
-     */
-    function onRefresh(tabId) {
-      const tab = tabFor(tabId);
-      tab.seen = new Map();
-      tab.pending = [];
-      tab.buffer = [];
-      tab.revived = new Set();
-      broadcast(tabId, { kind: C.MESSAGE.RESCAN });
     }
 
     /** Requests still made by the previous document while the next one is loading are not reported. */
@@ -381,7 +329,6 @@
         const contentType = C.getHeader(details.responseHeaders, 'content-type');
         const size = C.sizeFromHeaders(details.responseHeaders, status);
         const result = C.classify(details.url, contentType, details.type, size);
-        if (details.type !== 'main_frame' && details.type !== 'sub_frame') reviveStreams(details.tabId, tab, details.url);
         if (result.kind === C.KIND.SEGMENT) {
           refreshCookies(details.tabId, tab);
           return;
@@ -401,7 +348,6 @@
           tab.lastPlaylist = report;
           tab.cookiesChanged = false;
         }
-        rememberStream(tab, report);
         queueReport(details.tabId, tab, report);
       } catch (ignored) {
         // A detector failure must never disturb browsing.
@@ -506,9 +452,6 @@
             return undefined;
           case C.MESSAGE.RESCAN_ALL:
             broadcast(tabId, { kind: C.MESSAGE.RESCAN });
-            return undefined;
-          case C.MESSAGE.REFRESH_ALL:
-            if (isTopFrame) onRefresh(tabId);
             return undefined;
           case C.MESSAGE.THUMBNAILS_ALL:
             broadcast(tabId, {
