@@ -46,6 +46,13 @@ class HlsVariablesTest {
     }
 
     @Test
+    fun `references next to braces and unknown names are read like players do`() {
+        val variables = mapOf("a" to "1", "b-2" to "x")
+        assertThat(HlsVariables.substitute("{\$a{\$b-2}}{\$}{\$a}{\$", variables)).isEqualTo("{\$ax}{\$}1{\$")
+        assertThat(HlsVariables.substitute("p/{\$a}/{\$a}.ts", variables)).isEqualTo("p/1/1.ts")
+    }
+
+    @Test
     fun `a playlist without definitions is left alone`() {
         val text = "#EXTM3U\n#EXTINF:4,\nseg{\$n}.ts\n"
         assertThat(HlsVariables.resolve(text, masterUrl)).isSameInstanceAs(text)

@@ -11,8 +11,6 @@ import java.net.URLDecoder
 object HlsVariables {
     private const val DEFINE = "#EXT-X-DEFINE:"
     private const val REFERENCE_START = "{$"
-    private val NAME = Regex("[A-Za-z0-9_-]+")
-    private val REFERENCE = Regex("\\{\\$([A-Za-z0-9_-]+)}")
 
     /** The variables the playlist [text] defines, by name. Empty when it defines none. */
     fun defined(text: String, playlistUrl: String, imported: Map<String, String> = emptyMap()): Map<String, String> {
@@ -33,7 +31,25 @@ object HlsVariables {
     /** [line] with its references to [variables] replaced. EXT-X-DEFINE lines are left as they are. */
     fun substitute(line: String, variables: Map<String, String>): String {
         if (variables.isEmpty() || !line.contains(REFERENCE_START) || isDefine(line.trimStart())) return line
-        return REFERENCE.replace(line) { variables[it.groupValues[1]] ?: it.value }
+        // A plain scan rather than a regex: Android's ICU engine and the JVM's disagree on braces.
+        val out = StringBuilder(line.length + 32)
+        var pos = 0
+        while (true) {
+            val start = line.indexOf(REFERENCE_START, pos)
+            if (start < 0) break
+            val end = line.indexOf('}', start + REFERENCE_START.length)
+            if (end < 0) break
+            val value = variables[line.substring(start + REFERENCE_START.length, end)]
+            if (value == null) {
+                // Not a defined variable: keep "{$" and look for a reference after it.
+                out.append(line, pos, start + REFERENCE_START.length)
+                pos = start + REFERENCE_START.length
+            } else {
+                out.append(line, pos, start).append(value)
+                pos = end + 1
+            }
+        }
+        return out.append(line, pos, line.length).toString()
     }
 
     /**
@@ -72,6 +88,10 @@ object HlsVariables {
 
     private fun isDefine(line: String): Boolean = line.startsWith(DEFINE, ignoreCase = true)
 
+    /** Variable names are made of letters, digits, "-" and "_". */
+    private fun isName(name: String): Boolean =
+        name.isNotEmpty() && name.all { it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it == '_' || it == '-' }
+
     private fun define(line: String, playlistUrl: String, imported: Map<String, String>): Define? {
         if (!isDefine(line)) return null
         val attributes = HlsParser.parseAttributes(line.substring(DEFINE.length))
@@ -79,7 +99,7 @@ object HlsVariables {
             ?: attributes["QUERYPARAM"]?.let { Define(Kind.QUERYPARAM, it, queryParameter(playlistUrl, it)) }
             ?: attributes["IMPORT"]?.let { Define(Kind.IMPORT, it, imported[it]) }
             ?: return null
-        if (!NAME.matches(define.name)) return null
+        if (!isName(define.name)) return null
         val usable = define.value?.takeUnless { value -> value.any { it == '"' || it == '\r' || it == '\n' } }
         return if (usable === define.value) define else Define(define.kind, define.name, null)
     }
