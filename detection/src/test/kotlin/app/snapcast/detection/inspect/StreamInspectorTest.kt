@@ -46,6 +46,21 @@ class StreamInspectorTest {
     }
 
     @Test
+    fun `a DASH manifest served as HLS is inspected as DASH and says so`() {
+        val mpd = """<?xml version="1.0"?>
+            <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" mediaPresentationDuration="PT1H2M3S">
+              <Period><AdaptationSet mimeType="video/mp4"><Representation id="v" bandwidth="1000000" width="1280" height="720"/></AdaptationSet></Period>
+            </MPD>
+        """.trimIndent()
+        origin.text("/stream/abc/manifest", mpd, HLS_MIME)
+
+        val result = inspector.inspect(video(origin.url("/stream/abc/manifest"), StreamType.HLS))
+
+        assertThat(result!!.type).isEqualTo(StreamType.DASH)
+        assertThat(result.durationSec).isEqualTo(3723.0)
+    }
+
+    @Test
     fun `a variant redirected to another host gets neither the site's cookie nor its Authorization`() {
         origin.text("/hls/master.m3u8", MASTER, HLS_MIME)
         origin.redirect("/hls/720.m3u8", cdn.url("/signed/720.m3u8"))

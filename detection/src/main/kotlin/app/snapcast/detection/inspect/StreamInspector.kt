@@ -84,11 +84,13 @@ internal class StreamInspector @Inject constructor(baseClient: OkHttpClient) {
     private fun inspectManifest(video: DetectedVideo): InspectionResult? {
         val body = fetchText(video, video.url) ?: return null
         // The body decides: some servers label DASH manifests as HLS and the other way round.
-        return when (MediaClassifier.sniffPlaylist(body.text.take(SNIFF_CHARS)) ?: video.type) {
+        val sniffed = MediaClassifier.sniffPlaylist(body.text.take(SNIFF_CHARS))
+        val result = when (sniffed ?: video.type) {
             StreamType.HLS -> inspectHls(video, body)
             StreamType.DASH -> DashInspector.inspect(body.text, body.finalUrl)?.let(PlaylistInspection::fromDash)
             else -> null
         }
+        return result?.copy(type = sniffed)
     }
 
     private fun inspectHls(video: DetectedVideo, body: FetchedText): InspectionResult? =

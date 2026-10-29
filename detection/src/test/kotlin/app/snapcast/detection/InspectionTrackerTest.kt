@@ -45,6 +45,21 @@ class InspectionTrackerTest {
     }
 
     @Test
+    fun `a file a later report shows to be a stream is inspected again, as a stream`() {
+        val tracker = InspectionTracker()
+        val page = hls.copy(url = "https://cdn.example/play/abc", type = StreamType.OTHER)
+        assertThat(tracker.shouldStart(page)).isTrue()
+        // The network report arrives while the file probe runs: the stream waits for it to finish.
+        assertThat(tracker.shouldStart(page.copy(type = StreamType.HLS))).isFalse()
+        tracker.finished(page.id, succeeded = true)
+
+        assertThat(tracker.shouldStart(page.copy(type = StreamType.HLS))).isTrue()
+        tracker.finished(page.id, succeeded = true)
+        assertThat(tracker.shouldStart(page.copy(type = StreamType.HLS))).isFalse()
+        assertThat(tracker.shouldStart(page.copy(type = StreamType.DASH))).isFalse()
+    }
+
+    @Test
     fun `clear forgets every attempt`() {
         val tracker = InspectionTracker()
         tracker.shouldStart(mp4)

@@ -5,12 +5,13 @@ import app.snapcast.core.model.MediaHeaders
 import app.snapcast.core.util.UrlUtils
 
 /**
- * Decides when a tab's videos are fetched by the stream inspector: once per video, and once more
- * after a failure when a later report brought different request headers or cookies (a DOM report
- * usually arrives before the network one that carries the cookies). Main thread only.
+ * Decides when a tab's videos are fetched by the stream inspector: once per video, once more after a
+ * failure when a later report brought different request headers or cookies (a DOM report usually
+ * arrives before the network one that carries the cookies), and again when a later report showed a
+ * file to be an HLS or DASH stream (an extension-less URL first seen in the page). Main thread only.
  */
 internal class InspectionTracker {
-    private class Attempt(var headers: MediaHeaders, var cookies: Map<String, String>, var count: Int) {
+    private class Attempt(var headers: MediaHeaders, var cookies: Map<String, String>, val adaptive: Boolean, var count: Int) {
         var running = true
         var succeeded = false
     }
@@ -21,8 +22,8 @@ internal class InspectionTracker {
     fun shouldStart(video: DetectedVideo): Boolean {
         if (!needsInspection(video)) return false
         val previous = attempts[video.id]
-        if (previous == null) {
-            attempts[video.id] = Attempt(video.headers, video.cookiesByHost, count = 1)
+        if (previous == null || (!previous.running && video.type.isAdaptive && !previous.adaptive)) {
+            attempts[video.id] = Attempt(video.headers, video.cookiesByHost, video.type.isAdaptive, count = 1)
             return true
         }
         if (previous.running || previous.succeeded || previous.count >= MAX_ATTEMPTS) return false

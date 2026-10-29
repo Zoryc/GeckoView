@@ -247,10 +247,13 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
     private fun onInspected(tabId: String, generation: Int, videoId: String, result: InspectionResult?) {
         val tab = tabs[tabId]?.takeIf { it.generation == generation } ?: return
         tab.inspections.finished(videoId, succeeded = result != null)
-        if (result == null) return
-        tab.collector.update(videoId) { result.applyTo(it) }
-        if (result.childPlaylistUrls.isNotEmpty()) tab.collector.onMasterParsed(videoId, result.childPlaylistUrls)
-        publish()
+        if (result != null) {
+            tab.collector.update(videoId) { result.applyTo(it) }
+            if (result.childPlaylistUrls.isNotEmpty()) tab.collector.onMasterParsed(videoId, result.childPlaylistUrls)
+        }
+        // A report may have shown the file being probed to be a stream: its manifest is read now.
+        tab.collector.videos.firstOrNull { it.id == videoId }?.let { inspectIfNeeded(tab, it) }
+        if (result != null) publish()
     }
 
     /** Publishes every tab's raw and visible lists and announces newly visible videos. */

@@ -62,6 +62,22 @@ class InspectionResultTest {
     }
 
     @Test
+    fun `a manifest type the body proved replaces the label, MIME type included`() {
+        val labelled = hls.copy(mimeType = "application/vnd.apple.mpegurl")
+
+        val updated = InspectionResult(type = StreamType.DASH).applyTo(labelled)
+
+        assertThat(updated.type).isEqualTo(StreamType.DASH)
+        assertThat(updated.mimeType).isEqualTo("application/dash+xml")
+        assertThat(InspectionResult(type = StreamType.HLS).applyTo(labelled)).isEqualTo(labelled)
+    }
+
+    @Test
+    fun `a stream gets no file size from a probe made while it looked like a file`() {
+        assertThat(InspectionResult(sizeBytes = 239L).applyTo(hls).sizeBytes).isNull()
+    }
+
+    @Test
     fun `live streams have no duration`() {
         val updated = InspectionResult(isLive = true, durationSec = 30.0).applyTo(hls)
 

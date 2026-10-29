@@ -2,6 +2,7 @@ package app.snapcast.detection.inspect
 
 import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.DrmInfo
+import app.snapcast.core.model.StreamType
 import app.snapcast.core.model.SubtitleTrack
 import app.snapcast.core.model.VideoVariant
 
@@ -21,18 +22,24 @@ internal data class InspectionResult(
     val hlsFragmentedMp4: Boolean? = null,
     /** Variant and rendition playlist URLs of an HLS master; the collector folds them into the master. */
     val childPlaylistUrls: List<String> = emptyList(),
+    /** The manifest type the body proved (HLS or DASH), which wins over a label saying otherwise. */
+    val type: StreamType? = null,
 ) {
     /**
      * [video] updated with these facts: known values replace unknown ones, nothing already known is
-     * lost (an existing DRM signal or MIME type wins), and live streams have no duration.
+     * lost (an existing DRM signal or MIME type wins), and live streams have no duration. A type the body
+     * proved replaces a wrong label, MIME type included; streams have no file size.
      */
     fun applyTo(video: DetectedVideo): DetectedVideo {
         val live = isLive ?: video.isLive
+        val corrected = type?.takeIf { it != video.type }
+        val streamType = corrected ?: video.type
         return video.copy(
+            type = streamType,
             isLive = live,
             durationSec = if (live) null else durationSec?.takeIf { it.isFinite() && it > 0 } ?: video.durationSec,
-            sizeBytes = sizeBytes?.takeIf { it > 0 } ?: video.sizeBytes,
-            mimeType = video.mimeType ?: mimeType,
+            sizeBytes = sizeBytes?.takeIf { it > 0 && !streamType.isAdaptive } ?: video.sizeBytes,
+            mimeType = corrected?.defaultMimeType ?: video.mimeType ?: mimeType,
             variants = variants.ifEmpty { video.variants },
             subtitles = mergeSubtitles(video.subtitles, subtitles),
             drm = video.drm ?: drm,
