@@ -860,7 +860,8 @@
         let player = players.get(element);
         // A new source (an ad, then the episode) has its own length.
         if (player && event.type === 'emptied') player.duration = undefined;
-        if (!blob && !http) {
+        // No source, or no longer in the page (an SPA swapped the player for the next episode's): gone.
+        if ((!blob && !http) || element.isConnected === false) {
           if (player && player.state !== null) forgetPlayer(player);
           return;
         }

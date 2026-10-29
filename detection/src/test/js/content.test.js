@@ -638,13 +638,14 @@ test('a video taken out of the page while playing is reported paused, and a fram
   frame.doc.dispatch('playing', { target: removed });
   frame.doc.dispatch('playing', { target: episode });
 
-  // Out of the document, its pause event only reaches the element's own listeners.
+  // Out of the document, its pause event only reaches the element's own listeners: it is gone, not paused.
+  removed.isConnected = false;
   removed.paused = true;
   removed.fireOwn('pause');
   frame.win.dispatch('pagehide', {});
 
   assert.deepEqual(playbackPosted(port).slice(2).map((m) => [m.element, m.paused, m.src || null, m.blob]), [
-    [1, true, 'https://cdn.example/ad.mp4', false],
+    [1, true, null, false],
     [2, true, null, false],
   ]);
 });
