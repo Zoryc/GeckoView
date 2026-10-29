@@ -50,6 +50,7 @@ import app.snapcast.data.di.ApplicationScope
 import app.snapcast.data.playback.PlaybackPositionRepository
 import app.snapcast.data.settings.SettingsRepository
 import app.snapcast.proxy.StreamProblem
+import app.snapcast.proxy.StreamProxy
 import app.snapcast.proxy.SubtitleSource
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.gms.cast.framework.CastContext
@@ -464,7 +465,10 @@ internal class CastControllerImpl @Inject constructor(
             if (result.isFailure) {
                 Log.w(TAG, "Load failed", result.exceptionOrNull())
                 suppressReceiverErrorsUntil = SystemClock.elapsedRealtime() + RECEIVER_ERROR_SUPPRESS_MS
-                val problem = proxyManager.takeRecentProblem(PROXY_PROBLEM_WINDOW_MS)
+                val problem = proxyManager.takeRecentProblem(
+                    PROXY_PROBLEM_WINDOW_MS,
+                    batch.items.mapNotNullTo(HashSet()) { StreamProxy.streamIdOf(it.contentUrl) },
+                )
                 if (problem != null && problem.kind == StreamProblem.Kind.UNREACHABLE && request is CastRequest.Remote &&
                     usesProxy(request.direct) && CastMediaRules.canCastDirectly(request.video)
                 ) {
@@ -800,7 +804,9 @@ internal class CastControllerImpl @Inject constructor(
         if (key == lastReceiverErrorKey) return
         lastReceiverErrorKey = key
         val pageUrl = current.originalUrl?.takeUnless { it in privateUrls }?.let(pagesByUrl::get)
-        val message = problemMessage(proxyManager.takeRecentProblem(PROXY_PROBLEM_WINDOW_MS)) ?: string(R.string.cast_error_playback)
+        val streamIds = listOfNotNull(current.contentUrl?.let(StreamProxy::streamIdOf))
+        val message = problemMessage(proxyManager.takeRecentProblem(PROXY_PROBLEM_WINDOW_MS, streamIds))
+            ?: string(R.string.cast_error_playback)
         _events.tryEmit(CastEvent.Error(CastErrorKind.LOAD_FAILED, message, pageUrl))
     }
 

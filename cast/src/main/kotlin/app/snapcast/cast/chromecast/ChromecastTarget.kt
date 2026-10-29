@@ -428,6 +428,7 @@ internal class ChromecastTarget @Inject constructor(
             currentItemId = status.currentItemId.takeIf { it != MediaQueueItem.INVALID_ITEM_ID },
             idleReason = idleReason,
             originalUrl = MediaInfoMapper.originalUrl(info),
+            contentUrl = info?.contentUrl?.takeIf { it.isNotBlank() } ?: info?.contentId?.takeIf { it.isNotBlank() },
         )
     }
 

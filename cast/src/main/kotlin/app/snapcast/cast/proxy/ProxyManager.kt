@@ -80,8 +80,9 @@ internal class ProxyManager @Inject constructor(
         }
     }
 
-    /** Why the proxy could not serve a stream just now, taken once (see [StreamProxy.takeRecentProblem]). */
-    fun takeRecentProblem(withinMs: Long): StreamProblem? = synchronized(lock) { proxy }?.takeRecentProblem(withinMs)
+    /** Why the proxy could not serve one of [streamIds] just now, taken once (see [StreamProxy.takeRecentProblem]). */
+    fun takeRecentProblem(withinMs: Long, streamIds: Collection<String>): StreamProblem? =
+        if (streamIds.isEmpty()) null else synchronized(lock) { proxy }?.takeRecentProblem(withinMs, streamIds)
 
     /** Keeps the proxy alive until the matching [release]. */
     fun acquire() {

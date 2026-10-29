@@ -54,19 +54,32 @@ class StreamProxy(
         val key = secret?.takeIf { it.isNotEmpty() } ?: ByteArray(SECRET_BYTES).also { SecureRandom().nextBytes(it) }
         val signer = UrlSigner(key)
         routes = ProxyRoutes(signer)
-        handler = ProxyHandler(registry, routes, signer, upstream, log) { problem -> synchronized(problemLock) { lastProblem = problem } }
+        handler = ProxyHandler(registry, routes, signer, upstream, log) { problem ->
+            synchronized(problemLock) {
+                problems.remove(problem.streamId)
+                problems[problem.streamId] = problem
+                while (problems.size > MAX_PROBLEMS) problems.remove(problems.keys.first())
+            }
+        }
     }
 
     private val problemLock = Any()
-    private var lastProblem: StreamProblem? = null
+
+    /** Latest problem per stream id, oldest first. */
+    private val problems = LinkedHashMap<String, StreamProblem>()
 
     /**
-     * The latest stream the proxy could not serve, if that was at most [withinMs] ago, taken once (it explains the
-     * receiver error that follows; a later, unrelated error must not get the same explanation).
+     * The latest problem of one of [streamIds] (any stream when null), if it was at most [withinMs] ago, taken
+     * once: it explains the receiver error that follows, and a later, unrelated error must not get the same
+     * explanation.
      */
-    fun takeRecentProblem(withinMs: Long, now: Long = System.currentTimeMillis()): StreamProblem? = synchronized(problemLock) {
-        val problem = lastProblem?.takeIf { now - it.atMs in 0..withinMs }
-        lastProblem = null
+    fun takeRecentProblem(
+        withinMs: Long,
+        streamIds: Collection<String>? = null,
+        now: Long = System.currentTimeMillis(),
+    ): StreamProblem? = synchronized(problemLock) {
+        val problem = problems.values.lastOrNull { (streamIds == null || it.streamId in streamIds) && now - it.atMs in 0..withinMs }
+        problem?.let { problems.remove(it.streamId) }
         problem
     }
 
@@ -158,8 +171,17 @@ class StreamProxy(
         return created
     }
 
-    private companion object {
-        const val SECRET_BYTES = 32
-        const val MAX_PORT = 65535
+    companion object {
+        private const val SECRET_BYTES = 32
+        private const val MAX_PORT = 65535
+        private const val MAX_PROBLEMS = 32
+
+        /** The id of the registered stream a proxy URL (or path) belongs to, or null for any other URL. */
+        fun streamIdOf(url: String): String? {
+            val marker = "/${ProxyRoutes.STREAM}/"
+            val start = url.indexOf(marker)
+            if (start < 0) return null
+            return url.substring(start + marker.length).substringBefore('/').takeIf { it.isNotEmpty() }
+        }
     }
 }

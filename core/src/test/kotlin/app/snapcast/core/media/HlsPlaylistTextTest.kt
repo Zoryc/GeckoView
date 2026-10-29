@@ -36,6 +36,9 @@ class HlsPlaylistTextTest {
             assertThat(HlsPlaylistText.clean(page)).isNull()
             assertThat(HlsPlaylistText.whatInstead(page)).isEqualTo(HlsPlaylistText.Instead.WEB_PAGE)
         }
+        // A French page in Latin-1, read as UTF-8: its accents become replacement characters.
+        val latin1 = String("<html><head><title>Lien expir\u00e9</title>".toByteArray(Charsets.ISO_8859_1), Charsets.UTF_8)
+        assertThat(HlsPlaylistText.whatInstead(latin1)).isEqualTo(HlsPlaylistText.Instead.WEB_PAGE)
         assertThat(HlsPlaylistText.whatInstead("{\"error\":\"token expired\"}")).isEqualTo(HlsPlaylistText.Instead.JSON)
         assertThat(HlsPlaylistText.whatInstead(" \n")).isEqualTo(HlsPlaylistText.Instead.NOTHING)
         assertThat(HlsPlaylistText.whatInstead("Access denied")).isEqualTo(HlsPlaylistText.Instead.OTHER)

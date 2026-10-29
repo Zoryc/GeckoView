@@ -72,9 +72,10 @@ object HlsPlaylistText {
         val head = text.trimStart { it == BOM || it.isWhitespace() }.take(512).lowercase()
         return when {
             head.isEmpty() -> Instead.NOTHING
+            // Tags first: a page in Latin-1 or Windows-1252 decodes its accents to replacement characters.
+            head.startsWith("<!doctype html") || head.startsWith("<html") || "<head" in head || "<body" in head -> Instead.WEB_PAGE
             // Binary data (a key, a segment) decodes to control and replacement characters.
             head.any { it == '\uFFFD' || (it.isISOControl() && !it.isWhitespace()) } -> Instead.OTHER
-            head.startsWith("<!doctype html") || head.startsWith("<html") || "<head" in head || "<body" in head -> Instead.WEB_PAGE
             head.startsWith("{") || head.startsWith("[") -> Instead.JSON
             else -> Instead.OTHER
         }

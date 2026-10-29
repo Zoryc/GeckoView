@@ -30,11 +30,14 @@ import java.io.PushbackInputStream
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.UnknownHostException
+import java.security.cert.CertPathValidatorException
+import java.security.cert.CertificateException
 import java.util.Locale
 import java.util.zip.GZIPInputStream
 import java.util.zip.Inflater
 import java.util.zip.InflaterInputStream
 import javax.net.ssl.SSLException
+import javax.net.ssl.SSLPeerUnverifiedException
 
 /** The parts of a client request the proxy looks at. */
 internal class ClientRequest(
@@ -180,12 +183,27 @@ internal class ProxyHandler(
         }
     }
 
-    /** Why the server could not be reached at all (no HTTP answer), or null for other I/O failures. */
-    private fun unreachableReason(e: IOException): String? = when (e) {
-        is SSLException -> "a certificate the phone does not trust"
-        is UnknownHostException -> "a name the phone cannot resolve"
-        is ConnectException, is NoRouteToHostException -> "a connection the phone could not open"
+    /**
+     * Why the server could not be reached at all (no HTTP answer), or null for other I/O failures. Only a
+     * certificate failure counts among TLS errors: on Android a connection reset mid-handshake is an
+     * SSLException too, and says nothing the Chromecast would do better.
+     */
+    private fun unreachableReason(e: IOException): String? = when {
+        e is SSLPeerUnverifiedException || (e is SSLException && causedByCertificate(e)) -> "a certificate the phone does not trust"
+        e is UnknownHostException -> "a name the phone cannot resolve"
+        e is ConnectException || e is NoRouteToHostException -> "a connection the phone could not open"
         else -> null
+    }
+
+    private fun causedByCertificate(e: Throwable): Boolean {
+        var cause: Throwable? = e
+        var depth = 0
+        while (cause != null && depth < MAX_CAUSE_DEPTH) {
+            if (cause is CertificateException || cause is CertPathValidatorException) return true
+            cause = cause.cause
+            depth++
+        }
+        return false
     }
 
     private fun answer(response: UpstreamResponse, target: Target, range: ByteRange?, head: Boolean): ProxyResponse {
@@ -373,7 +391,17 @@ internal class ProxyHandler(
             val zlib = first.size == 2 &&
                 (first[0].toInt() and 0x0F) == 8 &&
                 ((first[0].toInt() and 0xFF) * 256 + (first[1].toInt() and 0xFF)) % 31 == 0
-            InflaterInputStream(pushback, Inflater(!zlib))
+            val inflater = Inflater(!zlib)
+            object : InflaterInputStream(pushback, inflater) {
+                // close() only ends an Inflater it created itself; this one's native memory is freed here.
+                override fun close() {
+                    try {
+                        super.close()
+                    } finally {
+                        inflater.end()
+                    }
+                }
+            }
         }
         else -> null
     }
@@ -520,6 +548,7 @@ internal class ProxyHandler(
         const val DASH_MIME = "application/dash+xml"
         const val VTT_MIME = "text/vtt; charset=utf-8"
         private const val SNIFF_BYTES = 4096
+        private const val MAX_CAUSE_DEPTH = 8
         private val CONTENT_CODINGS = setOf("gzip", "x-gzip", "deflate", "br", "compress", "x-compress", "zstd")
         private const val MAX_PLAYLIST_BYTES = 8L * 1024 * 1024
         private const val MAX_SUBTITLE_BYTES = 8L * 1024 * 1024

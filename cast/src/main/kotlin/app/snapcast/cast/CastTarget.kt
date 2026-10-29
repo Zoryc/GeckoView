@@ -57,6 +57,8 @@ data class RemotePlaybackState(
     /** IdleReason name when idle after an error/finish ("FINISHED", "ERROR", ...). */
     val idleReason: String?,
     val originalUrl: String?,
+    /** The URL the receiver loaded for the current item (the proxy's URL for a proxied stream). */
+    val contentUrl: String? = null,
 ) {
     /**
      * Nothing is left to play on the receiver: playback was stopped (CANCELED), or the last item finished or
