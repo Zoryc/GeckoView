@@ -151,8 +151,9 @@ class VideoCollector(
 
     /**
      * The listed video a page's player plays ([playback]), or null: the entry for its http(s) source, else (a
-     * MediaSource player) the HLS/DASH stream its frame asked for, of the same duration when that is known,
-     * the most recently requested one. When no stream came from that frame, every stream of the tab counts.
+     * MediaSource player) the HLS/DASH stream its frame asked for: the one closest to the player's duration, or
+     * among those of unknown length (never one whose length contradicts it) the most recently requested one.
+     * When no stream came from that frame, every stream of the tab counts.
      */
     fun videoPlayedBy(playback: PlaybackMessage): String? {
         val src = playback.src?.trim()?.let(UrlUtils::withoutHlsDirectives)
@@ -165,14 +166,16 @@ class VideoCollector(
         val frame = playback.frameUrl.clean()?.let { withoutFragment(it) }
         val sameFrame = streams.filter { frame != null && frame in it.frameUrls }.ifEmpty { streams }
         val duration = playback.duration?.takeIf { it.isFinite() && it > 0 }
-        val sameLength = if (duration == null) {
-            sameFrame
-        } else {
-            val tolerance = maxOf(DURATION_TOLERANCE_SEC, duration * DURATION_TOLERANCE_RATIO)
-            sameFrame.filter { entry -> entry.video.durationSec?.let { abs(it - duration) <= tolerance } == true }
-                .ifEmpty { sameFrame }
+            ?: return sameFrame.maxByOrNull { it.lastNetworkAt }?.video?.id
+        val tolerance = maxOf(DURATION_TOLERANCE_SEC, duration * DURATION_TOLERANCE_RATIO)
+        val sameLength = sameFrame.mapNotNull { entry ->
+            entry.video.durationSec?.let { abs(it - duration) }?.takeIf { it <= tolerance }?.let { entry to it }
         }
-        return sameLength.maxByOrNull { it.lastNetworkAt }?.video?.id
+        if (sameLength.isNotEmpty()) {
+            return sameLength.minWith(compareBy<Pair<Entry, Double>> { it.second }.thenByDescending { it.first.lastNetworkAt })
+                .first.video.id
+        }
+        return sameFrame.filter { it.video.durationSec == null }.maxByOrNull { it.lastNetworkAt }?.video?.id
     }
 
     /** Remembers the frame a report came from and, for a network one, when it arrived. */
@@ -182,7 +185,8 @@ class VideoCollector(
             entry.frameUrls += frame
             while (entry.frameUrls.size > MAX_FRAMES) entry.frameUrls.remove(entry.frameUrls.first())
         }
-        if (!isDom) entry.lastNetworkAt = clock()
+        // When the page asked for it: replays of old reports (a rescan, a reconnection) keep their time.
+        if (!isDom) entry.lastNetworkAt = maxOf(entry.lastNetworkAt, report.timestamp.takeIf { it > 0 } ?: clock())
     }
 
     private fun create(id: String, url: String, type: StreamType, report: MediaReport, isDom: Boolean): DetectedVideo {

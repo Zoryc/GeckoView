@@ -426,12 +426,14 @@
       } else if (message.type === 'playback' && typeof message.element === 'number') {
         deliver(tabId, tab, C.compact({
           type: 'playback',
+          frame: isString(message.frame) ? message.frame : null,
           frameUrl: isString(message.frameUrl) ? message.frameUrl : senderUrl,
           element: message.element,
           src: isString(message.src) ? message.src : null,
           blob: message.blob === true,
           duration: typeof message.duration === 'number' ? message.duration : null,
           paused: message.paused !== false,
+          ended: message.ended === true,
           muted: message.muted === true,
           at: typeof message.at === 'number' ? message.at : null,
         }));

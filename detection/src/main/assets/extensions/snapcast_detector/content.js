@@ -11,7 +11,9 @@
  * video once into a small canvas and reports it (never before, so pages pay nothing for it otherwise).
  *
  * Every frame also says when one of its <video> elements starts or stops playing ("playback" messages),
- * so the app can tell which of the videos it found is the one the page shows. Only changes are sent.
+ * so the app can tell which of the videos it found is the one the page shows. Changes are sent, and a
+ * playing video is reported again every PLAYBACK_HEARTBEAT_MS, so one whose frame vanished (no pause
+ * event ever comes) goes stale in the app.
  *
  * Only the top frame talks to the app: it opens runtime.connectNative("snapcast"), says hello, sends
  * page metadata and its own findings, and relays what the background page delivers (network finds and
@@ -31,8 +33,9 @@
   const NATIVE_APP = 'snapcast';
   const TEXT_TRACK_KINDS = new Set(['subtitles', 'captions']);
   const MEDIA_EVENTS = ['loadstart', 'loadedmetadata', 'durationchange', 'play', 'emptied'];
-  /** Events after which a <video>'s playback state is reported (when it changed). */
-  const PLAYBACK_EVENTS = ['playing', 'pause', 'ended', 'emptied', 'durationchange', 'volumechange'];
+  /** Events after which a <video>'s playback state is reported when it changed (timeupdate: the heartbeat). */
+  const PLAYBACK_EVENTS = ['playing', 'pause', 'ended', 'emptied', 'durationchange', 'volumechange', 'timeupdate'];
+  const PLAYBACK_HEARTBEAT_MS = 10000;
   /** The native link replays the playback state of at most this many elements. */
   const MAX_PLAYBACK_STATES = 20;
   const SCAN_DEBOUNCE_MS = 300;
@@ -515,7 +518,7 @@
       }
       // Only an element's current state matters: play/pause toggles never fill the log.
       if (message.type === 'playback') {
-        const key = `${message.frameUrl || ''}#${message.element}`;
+        const key = `${message.frame || message.frameUrl || ''}#${message.element}`;
         playback.delete(key);
         playback.set(key, message);
         while (playback.size > MAX_PLAYBACK_STATES) playback.delete(playback.keys().next().value);
@@ -597,6 +600,10 @@
     /** Per element: its number in this frame and the playback state last reported for it. */
     const players = typeof WeakMap === 'function' ? new WeakMap() : new Map();
     let nextPlayer = 1;
+    /** Elements last reported playing, by number (said to be gone when this document goes away). */
+    const playing = new Map();
+    /** Names this document's elements for the app: unlike its URL, it does not change with pushState. */
+    const frameKey = `${Math.random().toString(36).slice(2, 10)}${now().toString(36)}`;
     /** Policy from the document's Referrer-Policy response header (asked of the background page). */
     let headerPolicy = null;
     /** Scans and pictures wait for that answer (at most POLICY_WAIT_MS), so no report has a Referer the page won't send. */
@@ -851,29 +858,51 @@
         const blob = isBlobUrl(src);
         const http = blob ? undefined : httpOnly(absolute(src, baseUrlOf(element)));
         let player = players.get(element);
+        // A new source (an ad, then the episode) has its own length.
+        if (player && event.type === 'emptied') player.duration = undefined;
         if (!blob && !http) {
-          if (player && player.state !== null) {
-            player.state = null;
-            emit({ type: 'playback', frameUrl: location(), element: player.id, blob: false, paused: true, at: now() });
-          }
+          if (player && player.state !== null) forgetPlayer(player);
           return;
         }
         const paused = Boolean(element.paused || element.ended);
         // A paused element that was never reported playing tells nothing (a preloaded player, an ad slot).
         if (paused && (!player || player.state === null)) return;
         if (!player) {
-          player = { id: nextPlayer++, state: null };
+          player = { id: nextPlayer++, state: null, duration: undefined, changedAt: 0, sentAt: 0 };
           players.set(element, player);
+          // Events at an element taken out of the page (it pauses) no longer reach the document.
+          for (const type of PLAYBACK_EVENTS) listen(element, type, onPlaybackEvent, false);
         }
         const muted = Boolean(element.muted || element.volume === 0);
-        const duration = positive(element.duration);
-        const state = `${paused}|${http || ''}|${blob}|${duration || ''}|${muted}`;
-        if (state === player.state) return;
-        player.state = state;
-        emit(C.compact({ type: 'playback', frameUrl: location(), element: player.id, src: http, blob, duration, paused, muted, at: now() }));
+        const ended = Boolean(element.ended);
+        // The first length of a source only: a live stream's window grows with every playlist refresh.
+        if (player.duration === undefined) player.duration = positive(element.duration);
+        const state = `${paused}|${ended}|${http || ''}|${blob}|${player.duration || ''}|${muted}`;
+        const time = now();
+        if (state !== player.state) {
+          player.state = state;
+          player.changedAt = time;
+        } else if (paused || time - player.sentAt < PLAYBACK_HEARTBEAT_MS) {
+          return;
+        }
+        player.sentAt = time;
+        if (paused) playing.delete(player.id);
+        else playing.set(player.id, player);
+        emit(C.compact({
+          type: 'playback', frame: frameKey, frameUrl: location(), element: player.id, src: http, blob,
+          duration: player.duration, paused, ended, muted, at: player.changedAt,
+        }));
       } catch (ignored) {
         // Best effort: the list just has no "playing" mark.
       }
+    }
+
+    /** Tells the app [player] has no source any more (it lost it, or its document is going away). */
+    function forgetPlayer(player) {
+      player.state = null;
+      player.duration = undefined;
+      playing.delete(player.id);
+      emit({ type: 'playback', frame: frameKey, frameUrl: location(), element: player.id, blob: false, paused: true, at: now() });
     }
 
     function onEncrypted() {
@@ -968,6 +997,10 @@
 
     for (const type of MEDIA_EVENTS) listen(doc, type, onMediaEvent, true);
     for (const type of PLAYBACK_EVENTS) listen(doc, type, onPlaybackEvent, true);
+    // A player frame navigated or removed while playing: its videos are gone (heartbeats cover the rest).
+    listen(win, 'pagehide', () => {
+      for (const player of Array.from(playing.values())) forgetPlayer(player);
+    }, false);
     listen(doc, 'encrypted', onEncrypted, true);
     listen(doc, 'DOMContentLoaded', () => scheduleScan(50), false);
     listen(win, 'load', () => scheduleScan(50), false);

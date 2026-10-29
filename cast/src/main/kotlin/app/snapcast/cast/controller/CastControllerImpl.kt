@@ -157,6 +157,9 @@ internal class CastControllerImpl @Inject constructor(
     private var pendingExpiry: Job? = null
     private var loadInFlight = false
     private var suppressReceiverErrorsUntil = 0L
+
+    /** Counts the LOADs sent; a load that failed because a newer one replaced it must not be retried. */
+    private var loadGeneration = 0
     private var lastProgress: Progress? = null
     private var finishedUrl: String? = null
     private var lastReceiverErrorKey: String? = null
@@ -258,6 +261,8 @@ internal class CastControllerImpl @Inject constructor(
 
     /** Appends [video] to (or, with [playNext], inserts it into) the receiver's queue. */
     private suspend fun appendToReceiver(video: DetectedVideo, variant: VideoVariant?, playNext: Boolean): CastResult {
+        // Appending to a receiver with no media loads it, replacing a load in flight.
+        loadGeneration++
         proxyManager.acquire()
         try {
             val media = buildRemote(video, variant, subtitle = null, direct = false)
@@ -308,6 +313,7 @@ internal class CastControllerImpl @Inject constructor(
 
     /** Reloads [current] at its position with the subtitle file [uri] added and enabled. */
     private suspend fun reloadWithLocalSubtitle(uri: Uri, state: RemotePlaybackState, current: CastMedia): CastResult {
+        loadGeneration++
         proxyManager.acquire()
         try {
             val fileName = withContext(Dispatchers.IO) { localMedia.displayName(uri) }
@@ -446,6 +452,7 @@ internal class CastControllerImpl @Inject constructor(
 
     /** Builds the media (plus the pending queue) and loads it on the connected receiver. */
     private suspend fun execute(request: CastRequest): CastResult {
+        val generation = ++loadGeneration
         proxyManager.acquire()
         loadInFlight = true
         inBandSubtitleSelection?.cancel()
@@ -470,7 +477,7 @@ internal class CastControllerImpl @Inject constructor(
                     batch.items.mapNotNullTo(HashSet()) { StreamProxy.streamIdOf(it.contentUrl) },
                 )
                 if (problem != null && problem.kind == StreamProblem.Kind.UNREACHABLE && request is CastRequest.Remote &&
-                    usesProxy(request.direct) && CastMediaRules.canCastDirectly(request.video)
+                    usesProxy(request.direct) && CastMediaRules.canCastDirectly(request.video) && generation == loadGeneration
                 ) {
                     // The phone cannot reach the server (an incomplete certificate chain, a filtering DNS) but
                     // the Chromecast may: it is how the video plays with the proxy turned off.
@@ -482,6 +489,8 @@ internal class CastControllerImpl @Inject constructor(
             val consumed = batch.consumed.mapTo(HashSet()) { it.key }
             _pendingQueue.update { queue -> queue.filterNot { it.key in consumed } }
             lastReceiverErrorKey = null
+            // Errors from now on belong to this media, not to a load that failed before it.
+            suppressReceiverErrorsUntil = 0L
             _events.tryEmit(CastEvent.Started(first.title))
             val rendition = (request as? CastRequest.Remote)?.subtitle?.takeIf { it.isHlsRendition }
             if (rendition != null) selectInBandSubtitle(rendition, first)

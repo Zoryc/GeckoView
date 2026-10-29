@@ -54,9 +54,11 @@ data class DrmMessage(
 ) : DetectorMessage
 
 /**
- * A `<video>` of the page started or stopped playing, or its duration or muting changed. [element] numbers
- * the elements of a frame. [src] is its http(s) source; a MediaSource player ([blob]) has none, and its stream
- * is found by frame and [duration]. A message with neither means the element lost its source.
+ * A `<video>` of the page started or stopped playing, or its duration or muting changed; a playing one is
+ * reported again every 10 s. [element] numbers the elements of the document [frame] names (a random key that,
+ * unlike [frameUrl], survives pushState). [src] is its http(s) source; a MediaSource player ([blob]) has none,
+ * and its stream is found by frame and [duration]. A message with neither means the element is gone. [at] is
+ * when its state last changed.
  */
 @Serializable
 @SerialName("playback")
@@ -69,6 +71,9 @@ data class PlaybackMessage(
     val paused: Boolean = true,
     val muted: Boolean = false,
     val at: Long = 0L,
+    val frame: String? = null,
+    /** Paused because it played to the end (an ad that finished, rather than an episode someone paused). */
+    val ended: Boolean = false,
 ) : DetectorMessage
 
 @Serializable

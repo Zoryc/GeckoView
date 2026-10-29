@@ -433,13 +433,13 @@ test('a child frame\'s playback state reaches the top frame with only the fields
   const sender = { tab: { id: TAB }, frameId: 3, url: 'https://player.example/embed/1' };
   bg.onRuntimeMessage({
     kind: 'snapcast-report',
-    message: { type: 'playback', element: 2, blob: true, duration: 2700.5, paused: false, muted: true, at: 5, extra: 'x' },
+    message: { type: 'playback', frame: 'k1', element: 2, blob: true, duration: 2700.5, paused: false, muted: true, at: 5, extra: 'x' },
   }, sender);
   bg.onRuntimeMessage({ kind: 'snapcast-report', message: { type: 'playback', paused: false } }, sender);
 
   assert.equal(browser.sent.length, 1);
   assert.deepEqual(browser.sent[0].message.message, {
-    type: 'playback', frameUrl: 'https://player.example/embed/1', element: 2, blob: true, duration: 2700.5, paused: false, muted: true, at: 5,
+    type: 'playback', frame: 'k1', frameUrl: 'https://player.example/embed/1', element: 2, blob: true, duration: 2700.5, paused: false, ended: false, muted: true, at: 5,
   });
 });
 

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -155,7 +156,15 @@ fun VideoSheet(
                 if (empty) {
                     EmptyVideos(isDetectorReady = isDetectorReady, onRescan = onRescan)
                 } else {
-                    LazyColumn(contentPadding = PaddingValues(bottom = if (onReportProblem != null) 0.dp else 16.dp)) {
+                    val listState = rememberLazyListState()
+                    // The video the page plays moves to the top: keep it in view when the list showed its top.
+                    LaunchedEffect(videos.firstOrNull()?.id) {
+                        if (listState.firstVisibleItemIndex <= 1) listState.animateScrollToItem(0)
+                    }
+                    LazyColumn(
+                        state = listState,
+                        contentPadding = PaddingValues(bottom = if (onReportProblem != null) 0.dp else 16.dp),
+                    ) {
                         items(videos, key = { it.id }) { video ->
                             VideoItem(
                                 video = video,

@@ -20,8 +20,8 @@ object ContextMenuVideos {
     /**
      * - A video already detected in the tab with the same (normalized) URL is reused, keeping its headers,
      *   variants and DRM flag.
-     * - `blob:` / MediaSource sources cannot be fetched; the tab's most recent adaptive stream (or most
-     *   recent video) stands in for them, since that is what the element is playing.
+     * - `blob:` / MediaSource sources cannot be fetched; the video the page plays ([DetectedVideo.pagePlayback]),
+     *   else the tab's most recent adaptive stream (or most recent video) stands in for them.
      * - Other http(s) sources become a new DOM video whose Referer is the page URL.
      * Returns null when nothing castable can be derived.
      */
@@ -36,7 +36,9 @@ object ContextMenuVideos {
         if (src.isEmpty()) return null
         detected.firstOrNull { it.url == src }?.let { return it }
         if (src.startsWith("blob:", ignoreCase = true) || src.startsWith("mediasource:", ignoreCase = true)) {
-            return detected.lastOrNull { it.type.isAdaptive } ?: detected.lastOrNull()
+            return detected.firstOrNull { it.pagePlayback != null && it.type.isAdaptive }
+                ?: detected.lastOrNull { it.type.isAdaptive }
+                ?: detected.lastOrNull()
         }
         if (!UrlUtils.isHttp(src)) return null
         val normalized = UrlUtils.normalizeForDedupe(src)

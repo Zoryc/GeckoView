@@ -12,7 +12,7 @@ internal class TabDetection(val tabId: String, val isPrivate: Boolean, private v
     val inspections = InspectionTracker()
 
     /** Which of the page's `<video>` elements its viewer watches. */
-    val playback = PagePlaybackTracker()
+    val playback = PagePlaybackTracker(clock)
 
     /** Incremented whenever the list is reset, so late inspection results of an old document are dropped. */
     var generation = 0

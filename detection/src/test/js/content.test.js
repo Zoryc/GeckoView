@@ -556,27 +556,96 @@ test('child frames report to the background and never connect to the app', () =>
   assert.equal(frame.runtime.sent.filter((m) => m.kind === 'snapcast-report').length, 1);
 });
 
+/** A <video> that can carry its own listeners, like a real element taken out of the page. */
+function listenedVideo(props) {
+  const listeners = {};
+  return video(Object.assign({
+    addEventListener(type, listener) {
+      (listeners[type] = listeners[type] || []).push(listener);
+    },
+    fireOwn(type) {
+      for (const listener of listeners[type] || []) listener({ target: this });
+    },
+  }, props));
+}
+
+/** Playback messages posted to the app, without the frame's random key (checked to be one and the same). */
+function playbackPosted(port) {
+  const messages = port.posted.filter((m) => m.type === 'playback');
+  const frames = new Set(messages.map((m) => m.frame));
+  assert.equal(frames.size <= 1, true);
+  for (const frame of frames) assert.equal(typeof frame, 'string');
+  return messages.map((m) => {
+    const copy = Object.assign({}, m);
+    delete copy.frame;
+    return copy;
+  });
+}
+
 test('a video\'s playback is reported when it starts, changes and stops, never twice the same', () => {
   const frame = startFrame();
   const port = frame.runtime.ports[0];
   const player = video({ currentSrc: 'blob:https://site.example/1', paused: false, ended: false, muted: true, volume: 1, duration: NaN });
-  const playback = () => port.posted.filter((m) => m.type === 'playback');
 
   frame.doc.dispatch('playing', { target: player });
   frame.doc.dispatch('volumechange', { target: player });
+  frame.advance(1000);
   player.duration = 2700.5;
   frame.doc.dispatch('durationchange', { target: player });
+  frame.advance(1000);
   player.paused = true;
   frame.doc.dispatch('pause', { target: player });
+  frame.advance(1000);
   player.currentSrc = '';
   frame.doc.dispatch('emptied', { target: player });
   frame.doc.dispatch('emptied', { target: player });
 
-  assert.deepEqual(playback(), [
-    { type: 'playback', frameUrl: PAGE, element: 1, blob: true, paused: false, muted: true, at: 10000 },
-    { type: 'playback', frameUrl: PAGE, element: 1, blob: true, duration: 2700.5, paused: false, muted: true, at: 10000 },
-    { type: 'playback', frameUrl: PAGE, element: 1, blob: true, duration: 2700.5, paused: true, muted: true, at: 10000 },
-    { type: 'playback', frameUrl: PAGE, element: 1, blob: false, paused: true, at: 10000 },
+  assert.deepEqual(playbackPosted(port), [
+    { type: 'playback', frameUrl: PAGE, element: 1, blob: true, paused: false, ended: false, muted: true, at: 10000 },
+    { type: 'playback', frameUrl: PAGE, element: 1, blob: true, duration: 2700.5, paused: false, ended: false, muted: true, at: 11000 },
+    { type: 'playback', frameUrl: PAGE, element: 1, blob: true, duration: 2700.5, paused: true, ended: false, muted: true, at: 12000 },
+    { type: 'playback', frameUrl: PAGE, element: 1, blob: false, paused: true, at: 13000 },
+  ]);
+});
+
+test('a playing video is reported again every ten seconds, and a live window that grows is not a change', () => {
+  const frame = startFrame();
+  const port = frame.runtime.ports[0];
+  const player = video({ currentSrc: 'blob:https://site.example/live', paused: false, ended: false, muted: false, volume: 1, duration: 60 });
+
+  frame.doc.dispatch('playing', { target: player });
+  for (let i = 0; i < 9; i++) {
+    frame.advance(1000);
+    player.duration += 2;
+    frame.doc.dispatch('durationchange', { target: player });
+    frame.doc.dispatch('timeupdate', { target: player });
+  }
+  assert.equal(playbackPosted(port).length, 1);
+  frame.advance(1000);
+  frame.doc.dispatch('timeupdate', { target: player });
+
+  const posted = playbackPosted(port);
+  assert.equal(posted.length, 2);
+  // Same state, same "changed at": only the heartbeat says it is still there.
+  assert.deepEqual(posted[1], posted[0]);
+});
+
+test('a video taken out of the page while playing is reported paused, and a frame going away forgets its videos', () => {
+  const frame = startFrame();
+  const port = frame.runtime.ports[0];
+  const removed = listenedVideo({ currentSrc: 'https://cdn.example/ad.mp4', paused: false, ended: false, muted: false, volume: 1 });
+  const episode = listenedVideo({ currentSrc: 'blob:https://site.example/1', paused: false, ended: false, muted: false, volume: 1 });
+  frame.doc.dispatch('playing', { target: removed });
+  frame.doc.dispatch('playing', { target: episode });
+
+  // Out of the document, its pause event only reaches the element's own listeners.
+  removed.paused = true;
+  removed.fireOwn('pause');
+  frame.win.dispatch('pagehide', {});
+
+  assert.deepEqual(playbackPosted(port).slice(2).map((m) => [m.element, m.paused, m.src || null, m.blob]), [
+    [1, true, 'https://cdn.example/ad.mp4', false],
+    [2, true, null, false],
   ]);
 });
 
@@ -588,8 +657,8 @@ test('a paused video that never played, and other elements, are not reported', (
   frame.doc.dispatch('playing', { target: video({ currentSrc: '', src: '', paused: false }) });
   frame.doc.dispatch('playing', { target: video({ currentSrc: 'https://cdn.example/movie.mp4', paused: false, ended: false, muted: false, volume: 1, duration: 60 }) });
 
-  assert.deepEqual(port.posted.filter((m) => m.type === 'playback'), [
-    { type: 'playback', frameUrl: PAGE, element: 1, src: 'https://cdn.example/movie.mp4', blob: false, duration: 60, paused: false, muted: false, at: 10000 },
+  assert.deepEqual(playbackPosted(port), [
+    { type: 'playback', frameUrl: PAGE, element: 1, src: 'https://cdn.example/movie.mp4', blob: false, duration: 60, paused: false, ended: false, muted: false, at: 10000 },
   ]);
 });
 
@@ -598,8 +667,8 @@ test('the native link replays only the latest playback state of each element', (
   const timers = fakeTimers();
   const link = content.createNativeLink(runtime, { setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, maxLogItems: 3 });
   link.start();
-  for (let i = 0; i < 10; i++) link.send({ type: 'playback', frameUrl: PAGE, element: 1, paused: i % 2 === 1, at: i });
-  link.send({ type: 'playback', frameUrl: 'https://player.example/', element: 1, paused: false, at: 20 });
+  for (let i = 0; i < 10; i++) link.send({ type: 'playback', frame: 'top', frameUrl: `${PAGE}#${i}`, element: 1, paused: i % 2 === 1, at: i });
+  link.send({ type: 'playback', frame: 'player', frameUrl: 'https://player.example/', element: 1, paused: false, at: 20 });
   link.send({ type: 'media', items: [{ url: 'https://cdn.example/a.m3u8', source: 'network' }] });
   const port = runtime.ports[0];
   port.posted.length = 0;
