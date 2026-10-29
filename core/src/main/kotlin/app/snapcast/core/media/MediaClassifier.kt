@@ -211,7 +211,8 @@ object MediaClassifier {
 
     /** Sniffs the beginning of a body: "#EXTM3U" -> HLS, "<MPD" (after optional XML prolog/BOM) -> DASH. */
     fun sniffPlaylist(head: String): StreamType? {
-        var text = head.removePrefix("﻿").trimStart()
+        // Any number of byte order marks and blank lines may come first (concatenated or re-encoded files).
+        var text = head.trimStart { it == '\uFEFF' || it.isWhitespace() }
         if (text.startsWith("#EXTM3U")) return StreamType.HLS
         while (true) {
             text = when {

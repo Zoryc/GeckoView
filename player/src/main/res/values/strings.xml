@@ -28,6 +28,7 @@
     <string name="player_error_no_permission">Snapcast isn\'t allowed to read this file.</string>
     <string name="player_error_load_failed">The video couldn\'t be loaded.</string>
     <string name="player_error_malformed">The video data couldn\'t be read. The stream may be damaged or the link may have expired.</string>
+    <string name="player_error_not_a_playlist">The site sent a page instead of the video, so the link has probably expired. Reload the page to get a new one.</string>
     <string name="player_error_unsupported">This video format isn\'t supported by the built-in player.</string>
     <string name="player_error_decoder">This device can\'t decode this video.</string>
     <string name="player_error_audio_output">The audio output couldn\'t be started.</string>

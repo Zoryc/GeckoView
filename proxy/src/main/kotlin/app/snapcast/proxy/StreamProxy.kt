@@ -54,7 +54,20 @@ class StreamProxy(
         val key = secret?.takeIf { it.isNotEmpty() } ?: ByteArray(SECRET_BYTES).also { SecureRandom().nextBytes(it) }
         val signer = UrlSigner(key)
         routes = ProxyRoutes(signer)
-        handler = ProxyHandler(registry, routes, signer, upstream, log)
+        handler = ProxyHandler(registry, routes, signer, upstream, log) { problem -> synchronized(problemLock) { lastProblem = problem } }
+    }
+
+    private val problemLock = Any()
+    private var lastProblem: StreamProblem? = null
+
+    /**
+     * The latest stream the proxy could not serve, if that was at most [withinMs] ago, taken once (it explains the
+     * receiver error that follows; a later, unrelated error must not get the same explanation).
+     */
+    fun takeRecentProblem(withinMs: Long, now: Long = System.currentTimeMillis()): StreamProblem? = synchronized(problemLock) {
+        val problem = lastProblem?.takeIf { now - it.atMs in 0..withinMs }
+        lastProblem = null
+        problem
     }
 
     val isRunning: Boolean get() = server?.isAlive == true

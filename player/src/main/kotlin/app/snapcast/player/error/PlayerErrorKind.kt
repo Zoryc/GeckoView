@@ -15,6 +15,9 @@ internal enum class PlayerErrorKind {
     NO_PERMISSION,
     LOAD_FAILED,
     MALFORMED,
+
+    /** A playlist link answered with a web page, a JSON message or nothing: the link usually expired. */
+    NOT_A_PLAYLIST,
     UNSUPPORTED_FORMAT,
     DECODER,
     AUDIO_OUTPUT,

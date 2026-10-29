@@ -222,13 +222,14 @@ internal class PlaybackController(
             return
         }
         val described = PlaybackErrorMessages.describe(context.resources, error)
-        // A refused or vanished link usually expired: reloading the page it came from gets a fresh one.
+        // A refused, vanished or replaced link usually expired: reloading the page it came from gets a fresh one.
         val pageUrl = request?.pageUrl
-        val canReload = pageUrl != null && UrlUtils.isHttp(pageUrl) &&
-            (described.kind == PlayerErrorKind.HTTP_FORBIDDEN || described.kind == PlayerErrorKind.HTTP_NOT_FOUND)
+        val canReload = pageUrl != null && UrlUtils.isHttp(pageUrl) && described.kind in RELOADABLE
         _state.update { it.copy(error = described.copy(canReloadPage = canReload), resumedAtMs = null) }
         if (request?.isPrivate == false) {
-            val what = described.httpStatus?.let { "HTTP $it from ${described.failedHost ?: UrlUtils.hostOf(request?.url.orEmpty())}" }
+            val host = described.failedHost ?: UrlUtils.hostOf(request?.url.orEmpty())
+            val what = described.httpStatus?.let { "HTTP $it from $host" }
+                ?: described.instead?.let { "$it instead of a playlist from $host" }
                 ?: described.kind.name
             diagnostics?.record("player", "$what (${described.detail})", request?.pageUrl)
         }
@@ -265,5 +266,13 @@ internal class PlaybackController(
 
         /** Consecutive automatic live-edge recoveries before the error is shown. */
         const val MAX_LIVE_EDGE_RECOVERIES = 3
+
+        /** Failures a fresh link from the page can fix (an unreadable playlist is often an expired link's answer). */
+        val RELOADABLE = setOf(
+            PlayerErrorKind.HTTP_FORBIDDEN,
+            PlayerErrorKind.HTTP_NOT_FOUND,
+            PlayerErrorKind.NOT_A_PLAYLIST,
+            PlayerErrorKind.MALFORMED,
+        )
     }
 }

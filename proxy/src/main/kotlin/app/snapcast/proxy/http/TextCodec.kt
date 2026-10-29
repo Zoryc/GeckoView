@@ -15,6 +15,8 @@ internal object TextCodec {
      * UTF-8 is read as ISO-8859-1 and written back the same way, so its bytes survive the rewrite unchanged.
      */
     fun decodePlaylist(bytes: ByteArray, declared: Charset?): Decoded {
+        // A UTF-8 byte order mark tells how the file is encoded, whatever the server declares.
+        if (startsWithUtf8Bom(bytes)) return Decoded(String(bytes, Charsets.UTF_8), Charsets.UTF_8)
         if (declared != null) return Decoded(String(bytes, declared), declared)
         return strictUtf8(bytes)?.let { Decoded(it, Charsets.UTF_8) } ?: Decoded(String(bytes, Charsets.ISO_8859_1), Charsets.ISO_8859_1)
     }
@@ -32,6 +34,9 @@ internal object TextCodec {
         }
         return strictUtf8(bytes) ?: String(bytes, legacyCharset())
     }
+
+    private fun startsWithUtf8Bom(bytes: ByteArray): Boolean =
+        bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()
 
     private fun strictUtf8(bytes: ByteArray): String? = try {
         Charsets.UTF_8.newDecoder()

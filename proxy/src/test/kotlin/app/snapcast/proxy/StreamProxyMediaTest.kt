@@ -311,11 +311,12 @@ class StreamProxyMediaTest {
 
     @Test
     fun `a truncated upstream body closes the client connection instead of hanging`() {
+        // Cut after the first bytes the proxy looks at (a cut within them is answered 502 before anything is sent).
         origin.on("/media/movie.mp4") {
             MockResponse.Builder().code(200)
                 .setHeader("Content-Type", "video/mp4")
-                .body(Buffer().write(ByteArray(100)))
-                .setHeader("Content-Length", 1000)
+                .body(Buffer().write(ByteArray(10_000)))
+                .setHeader("Content-Length", 20_000)
                 .onResponseEnd(SocketEffect.ShutdownConnection)
                 .build()
         }

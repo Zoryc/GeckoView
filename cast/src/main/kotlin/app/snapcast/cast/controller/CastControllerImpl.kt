@@ -49,6 +49,7 @@ import app.snapcast.core.model.VideoVariant
 import app.snapcast.data.di.ApplicationScope
 import app.snapcast.data.playback.PlaybackPositionRepository
 import app.snapcast.data.settings.SettingsRepository
+import app.snapcast.proxy.StreamProblem
 import app.snapcast.proxy.SubtitleSource
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.gms.cast.framework.CastContext
@@ -463,7 +464,7 @@ internal class CastControllerImpl @Inject constructor(
             if (result.isFailure) {
                 Log.w(TAG, "Load failed", result.exceptionOrNull())
                 suppressReceiverErrorsUntil = SystemClock.elapsedRealtime() + RECEIVER_ERROR_SUPPRESS_MS
-                return failure(CastErrorKind.LOAD_FAILED, R.string.cast_error_load_failed)
+                return CastResult.Error(CastErrorKind.LOAD_FAILED, proxyProblemMessage() ?: string(R.string.cast_error_load_failed))
             }
             val consumed = batch.consumed.mapTo(HashSet()) { it.key }
             _pendingQueue.update { queue -> queue.filterNot { it.key in consumed } }
@@ -790,7 +791,8 @@ internal class CastControllerImpl @Inject constructor(
         if (key == lastReceiverErrorKey) return
         lastReceiverErrorKey = key
         val pageUrl = current.originalUrl?.takeUnless { it in privateUrls }?.let(pagesByUrl::get)
-        _events.tryEmit(CastEvent.Error(CastErrorKind.LOAD_FAILED, string(R.string.cast_error_playback), pageUrl))
+        val message = proxyProblemMessage() ?: string(R.string.cast_error_playback)
+        _events.tryEmit(CastEvent.Error(CastErrorKind.LOAD_FAILED, message, pageUrl))
     }
 
     /**
@@ -855,6 +857,12 @@ internal class CastControllerImpl @Inject constructor(
 
     // endregion
 
+    /** What the proxy saw when a proxied stream failed just now, when that explains it better than the receiver. */
+    private fun proxyProblemMessage(): String? = when (proxyManager.takeRecentProblem(PROXY_PROBLEM_WINDOW_MS)?.kind) {
+        StreamProblem.Kind.NOT_A_PLAYLIST -> string(R.string.cast_error_link_expired)
+        StreamProblem.Kind.UNSUPPORTED_ENCODING, null -> null
+    }
+
     private fun failure(kind: CastErrorKind, @StringRes message: Int): CastResult.Error =
         CastResult.Error(kind, string(message))
 
@@ -870,6 +878,9 @@ internal class CastControllerImpl @Inject constructor(
         const val RECEIVER_ERROR_SUPPRESS_MS = 5_000L
         const val IN_BAND_TRACK_WAIT_MS = 20_000L
         const val MAX_PAGES_BY_URL = 32
+
+        /** How recent a proxy problem must be to explain a receiver error. */
+        const val PROXY_PROBLEM_WINDOW_MS = 30_000L
         const val IDLE_REASON_FINISHED = ReceiverQueue.IDLE_REASON_FINISHED
         const val IDLE_REASON_ERROR = ReceiverQueue.IDLE_REASON_ERROR
 

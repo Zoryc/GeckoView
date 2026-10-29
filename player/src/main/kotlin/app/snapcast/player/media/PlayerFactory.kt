@@ -12,6 +12,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import app.snapcast.core.model.StreamType
 import app.snapcast.core.model.SubtitleTrack
 import app.snapcast.player.PlaybackRequest
 import okhttp3.OkHttpClient
@@ -37,7 +38,12 @@ internal class PlayerFactory(private val okHttpClient: OkHttpClient) {
         val httpFactory = OkHttpDataSource.Factory(client)
             .setUserAgent(headers.userAgent)
             .setDefaultRequestProperties(headers.properties)
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        // Playlists are checked before Media3 reads them: the played URL when it is HLS, and any .m3u8 link.
+        val checkedFactory = PlaylistCheckingDataSource.Factory(httpFactory) { uri ->
+            (request.type == StreamType.HLS && uri.toString() == request.url) ||
+                uri.lastPathSegment.orEmpty().lowercase().let { it.endsWith(".m3u8") || it.endsWith(".m3u") }
+        }
+        val dataSourceFactory = DefaultDataSource.Factory(context, checkedFactory)
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)

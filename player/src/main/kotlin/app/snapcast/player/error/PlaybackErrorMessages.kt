@@ -4,6 +4,7 @@ import android.content.res.Resources
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.HttpDataSource
 import app.snapcast.player.R
+import app.snapcast.player.media.NotAPlaylistException
 
 /** What the error overlay shows: a readable [message] and the Media3 error code name as [detail]. */
 internal data class PlayerErrorUi(
@@ -15,6 +16,8 @@ internal data class PlayerErrorUi(
     /** HTTP status of the failed request and the host it went to, when the failure was an HTTP error. */
     val httpStatus: Int? = null,
     val failedHost: String? = null,
+    /** What a playlist link answered instead ("a web page", ...), for [PlayerErrorKind.NOT_A_PLAYLIST]. */
+    val instead: String? = null,
 ) {
     /** Retrying cannot help with protected content or a format the device's player doesn't handle. */
     val canRetry: Boolean
@@ -27,7 +30,8 @@ internal object PlaybackErrorMessages {
     fun describe(resources: Resources, error: PlaybackException): PlayerErrorUi {
         val http = httpErrorOf(error)
         val status = http?.responseCode
-        val kind = PlayerErrorKind.classify(error.errorCode, status)
+        val notAPlaylist = causeOf<NotAPlaylistException>(error)
+        val kind = if (notAPlaylist != null && status == null) PlayerErrorKind.NOT_A_PLAYLIST else PlayerErrorKind.classify(error.errorCode, status)
         val message = when (kind) {
             PlayerErrorKind.HTTP_FORBIDDEN -> resources.getString(R.string.player_error_http_forbidden, status)
             PlayerErrorKind.HTTP_NOT_FOUND -> resources.getString(R.string.player_error_http_not_found, status)
@@ -44,6 +48,7 @@ internal object PlaybackErrorMessages {
             PlayerErrorKind.NO_PERMISSION -> resources.getString(R.string.player_error_no_permission)
             PlayerErrorKind.LOAD_FAILED -> resources.getString(R.string.player_error_load_failed)
             PlayerErrorKind.MALFORMED -> resources.getString(R.string.player_error_malformed)
+            PlayerErrorKind.NOT_A_PLAYLIST -> resources.getString(R.string.player_error_not_a_playlist)
             PlayerErrorKind.UNSUPPORTED_FORMAT -> resources.getString(R.string.player_error_unsupported)
             PlayerErrorKind.DECODER -> resources.getString(R.string.player_error_decoder)
             PlayerErrorKind.AUDIO_OUTPUT -> resources.getString(R.string.player_error_audio_output)
@@ -56,16 +61,20 @@ internal object PlaybackErrorMessages {
             message = message,
             detail = error.errorCodeName,
             httpStatus = status,
-            failedHost = http?.dataSpec?.uri?.host,
+            failedHost = http?.dataSpec?.uri?.host ?: notAPlaylist?.host,
+            instead = notAPlaylist?.instead?.description,
         )
     }
 
     /** The first invalid-response-code exception in the cause chain, if any. */
-    private fun httpErrorOf(error: Throwable): HttpDataSource.InvalidResponseCodeException? {
+    private fun httpErrorOf(error: Throwable): HttpDataSource.InvalidResponseCodeException? =
+        causeOf<HttpDataSource.InvalidResponseCodeException>(error)
+
+    private inline fun <reified T : Throwable> causeOf(error: Throwable): T? {
         var cause: Throwable? = error
         var depth = 0
         while (cause != null && depth < MAX_CAUSE_DEPTH) {
-            if (cause is HttpDataSource.InvalidResponseCodeException) return cause
+            if (cause is T) return cause
             cause = cause.cause
             depth++
         }

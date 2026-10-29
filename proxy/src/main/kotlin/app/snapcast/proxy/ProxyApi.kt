@@ -31,6 +31,21 @@ data class ProxyStreamRequest(
     val credentialsUrl: String? = null,
 )
 
+/**
+ * Why the proxy could not serve a stream: [description] says what the site sent instead (for logs and error
+ * messages, never a URL).
+ */
+data class StreamProblem(val streamId: String, val kind: Kind, val description: String, val atMs: Long) {
+    enum class Kind {
+        /** The stream's playlist URL answered with something that is not a playlist (a web page, a JSON message,
+         * nothing): the link usually expired or the site refused it. */
+        NOT_A_PLAYLIST,
+
+        /** The playlist came compressed in a way the proxy cannot decode. */
+        UNSUPPORTED_ENCODING,
+    }
+}
+
 data class ProxiedStream(
     val id: String,
     /** Path to append to "http://host:port", e.g. "/stream/3f9c.../index.m3u8". */

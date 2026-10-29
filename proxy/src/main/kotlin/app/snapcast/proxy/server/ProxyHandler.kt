@@ -1,9 +1,11 @@
 package app.snapcast.proxy.server
 
+import app.snapcast.core.media.HlsPlaylistText
 import app.snapcast.core.media.MediaClassifier
 import app.snapcast.core.media.SubtitleConverter
 import app.snapcast.core.model.StreamType
 import app.snapcast.core.util.UrlUtils
+import app.snapcast.proxy.StreamProblem
 import app.snapcast.proxy.SubtitleSource
 import app.snapcast.proxy.http.Base64Url
 import app.snapcast.proxy.http.ByteRange
@@ -26,6 +28,8 @@ import java.io.InputStream
 import java.io.PushbackInputStream
 import java.util.Locale
 import java.util.zip.GZIPInputStream
+import java.util.zip.Inflater
+import java.util.zip.InflaterInputStream
 
 /** The parts of a client request the proxy looks at. */
 internal class ClientRequest(
@@ -53,6 +57,7 @@ internal class ProxyHandler(
     private val signer: UrlSigner,
     private val upstream: UpstreamClient,
     private val log: (String) -> Unit,
+    private val onProblem: (StreamProblem) -> Unit = {},
 ) {
     /** Never throws: failures become 4xx/5xx answers (502 for upstream I/O errors). */
     fun serve(request: ClientRequest): ProxyResponse = try {
@@ -179,16 +184,28 @@ internal class ProxyHandler(
             var stream: InputStream = body
             if (code == 200) {
                 val candidate = playlistCandidate(target, contentType, response.finalUrl)
-                if (encoding != null) {
-                    if (candidate != null && encoding.equals("gzip", ignoreCase = true)) {
-                        return servePlaylist(candidate, GZIPInputStream(body), response, target)
+                // The body is looked at whenever it can be read: a playlist is served rewritten only when it is
+                // one, whatever its Content-Type or URL says (a 16-byte key labelled as a playlist stays a key,
+                // a playlist labelled video/... is still rewritten).
+                val readable = when {
+                    encoding == null -> body
+                    candidate != null -> decompressing(body, encoding) ?: return unsupportedEncoding(body, target, encoding)
+                    // A playlist without a telling name or type, compressed although identity was asked for.
+                    isGenericType(contentType) -> decompressing(body, encoding)
+                    else -> null
+                }
+                if (readable != null) {
+                    val pushback = PushbackInputStream(readable, SNIFF_BYTES)
+                    val start = Streams.readUpTo(pushback, SNIFF_BYTES)
+                    pushback.unread(start)
+                    sniff(start)?.let { return servePlaylist(it, pushback, response, target) }
+                    if (candidate != null && target.main && !looksBinary(start)) return notAPlaylist(pushback, target, candidate, start)
+                    if (readable !== body) {
+                        // Decompressed, but not a playlist after all: served decompressed, of unknown length.
+                        val mime = contentTypeFor(contentType, target)
+                        if (head) return Responses.headersOnly(200, mime, -1).also { pushback.close() }
+                        return Responses.stream(200, mime, pushback, -1)
                     }
-                } else if (candidate != null || shouldSniff(target, contentType, response.finalUrl)) {
-                    val pushback = PushbackInputStream(body, SNIFF_BYTES)
-                    val head = Streams.readUpTo(pushback, SNIFF_BYTES)
-                    pushback.unread(head)
-                    val type = sniff(head) ?: candidate?.takeUnless { looksBinary(head) }
-                    if (type != null) return servePlaylist(type, pushback, response, target)
                     stream = pushback
                 }
             }
@@ -314,8 +331,56 @@ internal class ProxyHandler(
             contentEncoding(response) == null &&
             playlistCandidate(target, response.header("Content-Type"), response.finalUrl) == null
 
+    /**
+     * The real content codings of [response] (lower case), or null for none: values that are not codings
+     * ("none", "UTF-8", "binary", ...), which some servers send, are ignored like `identity`.
+     */
     private fun contentEncoding(response: UpstreamResponse): String? =
-        response.header("Content-Encoding")?.trim()?.takeUnless { it.isEmpty() || it.equals("identity", ignoreCase = true) }
+        response.header("Content-Encoding")
+            ?.split(',')
+            ?.map { it.trim().lowercase(Locale.ROOT) }
+            ?.filter { it in CONTENT_CODINGS }
+            ?.joinToString(", ")
+            ?.takeIf { it.isNotEmpty() }
+
+    /** [body] decoded from [encoding] (gzip, or deflate with or without its zlib header); null when it cannot be. */
+    private fun decompressing(body: InputStream, encoding: String): InputStream? = when (encoding) {
+        "gzip", "x-gzip" -> GZIPInputStream(body)
+        "deflate" -> {
+            // Servers send "deflate" both zlib-wrapped (RFC 9110) and raw: a zlib header is CMF 0x?8 with
+            // (CMF * 256 + FLG) a multiple of 31.
+            val pushback = PushbackInputStream(body, 2)
+            val first = Streams.readUpTo(pushback, 2)
+            pushback.unread(first)
+            val zlib = first.size == 2 &&
+                (first[0].toInt() and 0x0F) == 8 &&
+                ((first[0].toInt() and 0xFF) * 256 + (first[1].toInt() and 0xFF)) % 31 == 0
+            InflaterInputStream(pushback, Inflater(!zlib))
+        }
+        else -> null
+    }
+
+    private fun unsupportedEncoding(body: InputStream, target: Target, encoding: String): ProxyResponse {
+        body.close()
+        report(target, StreamProblem.Kind.UNSUPPORTED_ENCODING, "a playlist compressed as $encoding")
+        return Responses.badGateway("Playlist compressed as $encoding, which the proxy cannot decode")
+    }
+
+    /**
+     * The stream's playlist URL answered 200 with something else (an expired link's web page, a JSON error, nothing):
+     * an error for the receiver, not a "playlist" made of the page's lines.
+     */
+    private fun notAPlaylist(body: InputStream, target: Target, expected: StreamType, head: ByteArray): ProxyResponse {
+        body.close()
+        val instead = HlsPlaylistText.whatInstead(String(head, Charsets.UTF_8)).description
+        log("Main resource of a stream is not a ${expected.label} playlist but $instead")
+        report(target, StreamProblem.Kind.NOT_A_PLAYLIST, instead)
+        return Responses.badGateway("Expected a ${expected.label} playlist, got $instead")
+    }
+
+    private fun report(target: Target, kind: StreamProblem.Kind, description: String) {
+        onProblem(StreamProblem(target.id, kind, description, System.currentTimeMillis()))
+    }
 
     // ---- playlists ----
 
@@ -329,16 +394,6 @@ internal class ProxyHandler(
         MediaClassifier.typeFromContentType(contentType)?.let { return it.takeIf(StreamType::isAdaptive) }
         return (target.urlType ?: MediaClassifier.typeFromUrl(finalUrl.toString()))?.takeIf { it.isAdaptive }
     }
-
-    /**
-     * Neither hint, Content-Type nor URL tells what the body is (generic or unknown types such as
-     * `application/octet-stream` or `video/vnd.mpeg.dash.mpd`): look at its first bytes.
-     */
-    private fun shouldSniff(target: Target, contentType: String?, finalUrl: HttpUrl): Boolean =
-        target.hint == null &&
-            MediaClassifier.typeFromContentType(contentType) == null &&
-            target.urlType == null &&
-            MediaClassifier.typeFromUrl(finalUrl.toString()) == null
 
     private fun sniff(head: ByteArray): StreamType? =
         if (head.isEmpty()) null else MediaClassifier.sniffPlaylist(String(head, Charsets.UTF_8))
@@ -354,7 +409,9 @@ internal class ProxyHandler(
         return when (type) {
             StreamType.HLS -> {
                 val decoded = TextCodec.decodePlaylist(bytes, declared)
-                val rewritten = HlsRewriter.rewrite(decoded.text, playlistUrl, mapper)
+                // Byte order marks and old Mac line breaks would otherwise turn tag lines into "URIs".
+                val text = HlsPlaylistText.clean(decoded.text) ?: decoded.text
+                val rewritten = HlsRewriter.rewrite(text, playlistUrl, mapper)
                 Responses.bytes(200, HLS_MIME, rewritten.toByteArray(decoded.charset)).header("Cache-Control", "no-cache")
             }
             else -> {
@@ -442,6 +499,7 @@ internal class ProxyHandler(
         const val DASH_MIME = "application/dash+xml"
         const val VTT_MIME = "text/vtt; charset=utf-8"
         private const val SNIFF_BYTES = 4096
+        private val CONTENT_CODINGS = setOf("gzip", "x-gzip", "deflate", "br", "compress", "x-compress", "zstd")
         private const val MAX_PLAYLIST_BYTES = 8L * 1024 * 1024
         private const val MAX_SUBTITLE_BYTES = 8L * 1024 * 1024
         private val HEAD_UNSUPPORTED = setOf(403, 405, 501)

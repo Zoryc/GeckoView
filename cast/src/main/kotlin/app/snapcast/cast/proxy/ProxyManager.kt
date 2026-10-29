@@ -5,6 +5,7 @@ import android.util.Log
 import app.snapcast.data.di.ApplicationScope
 import app.snapcast.data.settings.SettingsRepository
 import app.snapcast.proxy.ProxyConfig
+import app.snapcast.proxy.StreamProblem
 import app.snapcast.proxy.StreamProxy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -78,6 +79,9 @@ internal class ProxyManager @Inject constructor(
             created
         }
     }
+
+    /** Why the proxy could not serve a stream just now, taken once (see [StreamProxy.takeRecentProblem]). */
+    fun takeRecentProblem(withinMs: Long): StreamProblem? = synchronized(lock) { proxy }?.takeRecentProblem(withinMs)
 
     /** Keeps the proxy alive until the matching [release]. */
     fun acquire() {
