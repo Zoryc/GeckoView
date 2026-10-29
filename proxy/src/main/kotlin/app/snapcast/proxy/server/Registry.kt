@@ -8,7 +8,11 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** Something the proxy serves under a random id. */
 internal sealed interface Registration {
-    class Stream(val request: ProxyStreamRequest, val policy: HeaderPolicy) : Registration
+    class Stream(val request: ProxyStreamRequest, val policy: HeaderPolicy) : Registration {
+        /** EXT-X-DEFINE variables of the stream's main playlist, which its media playlists may IMPORT. */
+        @Volatile
+        var mainVariables: Map<String, String> = emptyMap()
+    }
 
     class Local(val source: LocalSource) : Registration
 

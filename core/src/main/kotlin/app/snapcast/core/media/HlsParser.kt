@@ -113,9 +113,14 @@ object HlsParser {
     private val LINE_BREAK = Regex("\r\n|\r|\n")
     private val RESOLUTION = Regex("(\\d+)\\s*[xX]\\s*(\\d+)")
 
-    /** Returns null when [text] is not an HLS playlist. Relative URIs are resolved against [playlistUrl]. */
+    /**
+     * Returns null when [text] is not an HLS playlist. Relative URIs are resolved against [playlistUrl], after
+     * its EXT-X-DEFINE variables are substituted.
+     */
     fun parse(text: String, playlistUrl: String): HlsPlaylist? {
-        val lines = text.removePrefix("﻿").split(LINE_BREAK).map { it.trim() }.filter { it.isNotEmpty() }
+        val written = text.removePrefix("﻿").split(LINE_BREAK).map { it.trim() }.filter { it.isNotEmpty() }
+        val variables = HlsVariables.defined(written.asSequence(), playlistUrl)
+        val lines = if (variables.isEmpty()) written else written.map { HlsVariables.substitute(it, variables) }
         if (lines.isEmpty() || !lines.first().startsWith(EXTM3U, ignoreCase = true)) return null
         val hasStreamInf = lines.any { it.startsWith(STREAM_INF, ignoreCase = true) }
         val hasSegments = lines.any { it.startsWith(EXTINF, ignoreCase = true) }

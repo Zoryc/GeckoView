@@ -1,6 +1,7 @@
 package app.snapcast.proxy.server
 
 import app.snapcast.core.media.HlsPlaylistText
+import app.snapcast.core.media.HlsVariables
 import app.snapcast.core.media.MediaClassifier
 import app.snapcast.core.media.SubtitleConverter
 import app.snapcast.core.model.StreamType
@@ -411,7 +412,10 @@ internal class ProxyHandler(
                 val decoded = TextCodec.decodePlaylist(bytes, declared)
                 // Byte order marks and old Mac line breaks would otherwise turn tag lines into "URIs".
                 val text = HlsPlaylistText.clean(decoded.text) ?: decoded.text
-                val rewritten = HlsRewriter.rewrite(text, playlistUrl, mapper)
+                if (target.main) target.stream.mainVariables = HlsVariables.defined(text, playlistUrl)
+                // Variables are substituted first: once a URI is signed into a route, the receiver cannot.
+                val resolved = HlsVariables.resolve(text, playlistUrl, target.stream.mainVariables)
+                val rewritten = HlsRewriter.rewrite(resolved, playlistUrl, mapper)
                 Responses.bytes(200, HLS_MIME, rewritten.toByteArray(decoded.charset)).header("Cache-Control", "no-cache")
             }
             else -> {
