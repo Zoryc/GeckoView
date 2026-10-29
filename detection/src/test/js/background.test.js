@@ -427,6 +427,22 @@ test('child frame findings are forwarded to the top frame with their origin fill
   assert.deepEqual(browser.sent[1].options, { frameId: 0 });
 });
 
+test('a child frame\'s playback state reaches the top frame with only the fields the app reads', async () => {
+  const { bg, browser } = setup();
+  await hello(bg, PAGE, 'Top title');
+  const sender = { tab: { id: TAB }, frameId: 3, url: 'https://player.example/embed/1' };
+  bg.onRuntimeMessage({
+    kind: 'snapcast-report',
+    message: { type: 'playback', element: 2, blob: true, duration: 2700.5, paused: false, muted: true, at: 5, extra: 'x' },
+  }, sender);
+  bg.onRuntimeMessage({ kind: 'snapcast-report', message: { type: 'playback', paused: false } }, sender);
+
+  assert.equal(browser.sent.length, 1);
+  assert.deepEqual(browser.sent[0].message.message, {
+    type: 'playback', frameUrl: 'https://player.example/embed/1', element: 2, blob: true, duration: 2700.5, paused: false, muted: true, at: 5,
+  });
+});
+
 test('only the top frame may say hello or update the page', () => {
   const { bg } = setup();
   const child = { tab: { id: TAB }, frameId: 2, url: 'https://f.example/' };

@@ -74,6 +74,8 @@
     <string name="ui_video_subtitles_title">Subtitles</string>
     <string name="ui_video_subtitle_track">Track %1$d</string>
     <string name="ui_video_clip_label">Video link</string>
+    <string name="ui_video_chip_page_playing">Playing on page</string>
+    <string name="ui_video_chip_page_paused">Paused on page</string>
     <string name="ui_video_chip_live">LIVE</string>
     <string name="ui_video_chip_drm">DRM</string>
     <string name="ui_video_chip_cc">CC</string>

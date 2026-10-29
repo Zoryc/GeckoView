@@ -53,6 +53,24 @@ data class DrmMessage(
     val frameUrl: String? = null,
 ) : DetectorMessage
 
+/**
+ * A `<video>` of the page started or stopped playing, or its duration or muting changed. [element] numbers
+ * the elements of a frame. [src] is its http(s) source; a MediaSource player ([blob]) has none, and its stream
+ * is found by frame and [duration]. A message with neither means the element lost its source.
+ */
+@Serializable
+@SerialName("playback")
+data class PlaybackMessage(
+    val frameUrl: String? = null,
+    val element: Int = 0,
+    val src: String? = null,
+    val blob: Boolean = false,
+    val duration: Double? = null,
+    val paused: Boolean = true,
+    val muted: Boolean = false,
+    val at: Long = 0L,
+) : DetectorMessage
+
 @Serializable
 data class MediaReport(
     val url: String,

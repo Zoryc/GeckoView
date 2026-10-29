@@ -556,6 +556,59 @@ test('child frames report to the background and never connect to the app', () =>
   assert.equal(frame.runtime.sent.filter((m) => m.kind === 'snapcast-report').length, 1);
 });
 
+test('a video\'s playback is reported when it starts, changes and stops, never twice the same', () => {
+  const frame = startFrame();
+  const port = frame.runtime.ports[0];
+  const player = video({ currentSrc: 'blob:https://site.example/1', paused: false, ended: false, muted: true, volume: 1, duration: NaN });
+  const playback = () => port.posted.filter((m) => m.type === 'playback');
+
+  frame.doc.dispatch('playing', { target: player });
+  frame.doc.dispatch('volumechange', { target: player });
+  player.duration = 2700.5;
+  frame.doc.dispatch('durationchange', { target: player });
+  player.paused = true;
+  frame.doc.dispatch('pause', { target: player });
+  player.currentSrc = '';
+  frame.doc.dispatch('emptied', { target: player });
+  frame.doc.dispatch('emptied', { target: player });
+
+  assert.deepEqual(playback(), [
+    { type: 'playback', frameUrl: PAGE, element: 1, blob: true, paused: false, muted: true, at: 10000 },
+    { type: 'playback', frameUrl: PAGE, element: 1, blob: true, duration: 2700.5, paused: false, muted: true, at: 10000 },
+    { type: 'playback', frameUrl: PAGE, element: 1, blob: true, duration: 2700.5, paused: true, muted: true, at: 10000 },
+    { type: 'playback', frameUrl: PAGE, element: 1, blob: false, paused: true, at: 10000 },
+  ]);
+});
+
+test('a paused video that never played, and other elements, are not reported', () => {
+  const frame = startFrame();
+  const port = frame.runtime.ports[0];
+  frame.doc.dispatch('pause', { target: video({ currentSrc: 'https://cdn.example/ad.mp4', paused: true }) });
+  frame.doc.dispatch('playing', { target: element('audio', { currentSrc: 'https://cdn.example/a.mp3', paused: false }) });
+  frame.doc.dispatch('playing', { target: video({ currentSrc: '', src: '', paused: false }) });
+  frame.doc.dispatch('playing', { target: video({ currentSrc: 'https://cdn.example/movie.mp4', paused: false, ended: false, muted: false, volume: 1, duration: 60 }) });
+
+  assert.deepEqual(port.posted.filter((m) => m.type === 'playback'), [
+    { type: 'playback', frameUrl: PAGE, element: 1, src: 'https://cdn.example/movie.mp4', blob: false, duration: 60, paused: false, muted: false, at: 10000 },
+  ]);
+});
+
+test('the native link replays only the latest playback state of each element', () => {
+  const runtime = fakeRuntime();
+  const timers = fakeTimers();
+  const link = content.createNativeLink(runtime, { setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, maxLogItems: 3 });
+  link.start();
+  for (let i = 0; i < 10; i++) link.send({ type: 'playback', frameUrl: PAGE, element: 1, paused: i % 2 === 1, at: i });
+  link.send({ type: 'playback', frameUrl: 'https://player.example/', element: 1, paused: false, at: 20 });
+  link.send({ type: 'media', items: [{ url: 'https://cdn.example/a.m3u8', source: 'network' }] });
+  const port = runtime.ports[0];
+  port.posted.length = 0;
+
+  link.replay();
+
+  assert.deepEqual(port.posted.map((m) => [m.type, m.at]), [['media', undefined], ['playback', 9], ['playback', 20]]);
+});
+
 test('an encrypted event is reported once as DRM', () => {
   const frame = startFrame();
   const port = frame.runtime.ports[0];

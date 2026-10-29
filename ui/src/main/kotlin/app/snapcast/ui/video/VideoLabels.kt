@@ -1,6 +1,7 @@
 package app.snapcast.ui.video
 
 import app.snapcast.core.model.DetectedVideo
+import app.snapcast.core.model.PagePlayback
 import app.snapcast.core.model.StreamType
 import app.snapcast.core.model.VideoVariant
 import app.snapcast.core.util.Formatters
@@ -8,23 +9,30 @@ import app.snapcast.core.util.Formatters
 /**
  * Kinds of metadata tags shown under a video in the list. [QUALITY_RANGE] is the best quality of a stream whose
  * player switches between several ("Up to 1080p"); [QUALITY] a fixed one (a file, one variant, a picked quality).
+ * [PAGE_PLAYING] and [PAGE_PAUSED] mark the video the page's own player plays or paused last.
  */
-enum class VideoChipKind { TYPE, QUALITY, QUALITY_RANGE, LIVE, DURATION, SIZE, SUBTITLES, DOMAIN, DRM }
+enum class VideoChipKind { PAGE_PLAYING, PAGE_PAUSED, TYPE, QUALITY, QUALITY_RANGE, LIVE, DURATION, SIZE, SUBTITLES, DOMAIN, DRM }
 
 /**
  * One tag. [text] is null for kinds whose label is a localized string chosen by the UI
- * ([VideoChipKind.LIVE], [VideoChipKind.DRM], [VideoChipKind.SUBTITLES]); for [VideoChipKind.QUALITY_RANGE]
- * it is the best quality, which the UI wraps ("Up to %s").
+ * ([VideoChipKind.PAGE_PLAYING], [VideoChipKind.PAGE_PAUSED], [VideoChipKind.LIVE], [VideoChipKind.DRM],
+ * [VideoChipKind.SUBTITLES]); for [VideoChipKind.QUALITY_RANGE] it is the best quality, which the UI wraps ("Up to %s").
  */
 data class VideoChip(val kind: VideoChipKind, val text: String?)
 
 /** Pure formatting of the video list metadata (no Android types). */
 object VideoLabels {
     /**
-     * Tags in display order: type (HLS/DASH/MP4...), quality, LIVE or duration, size, subtitles, source domain, DRM.
-     * Unknown values are omitted. [picked] is the quality chosen for this video, shown instead of the stream's range.
+     * Tags in display order: playing or paused on the page, type (HLS/DASH/MP4...), quality, LIVE or duration, size,
+     * subtitles, source domain, DRM. Unknown values are omitted. [picked] is the quality chosen for this video,
+     * shown instead of the stream's range.
      */
     fun chips(video: DetectedVideo, picked: VideoVariant? = null): List<VideoChip> = buildList {
+        when (video.pagePlayback) {
+            PagePlayback.PLAYING -> add(VideoChip(VideoChipKind.PAGE_PLAYING, null))
+            PagePlayback.PAUSED -> add(VideoChip(VideoChipKind.PAGE_PAUSED, null))
+            null -> Unit
+        }
         add(VideoChip(VideoChipKind.TYPE, video.type.label))
         if (picked != null) {
             add(VideoChip(VideoChipKind.QUALITY, picked.qualityLabel))

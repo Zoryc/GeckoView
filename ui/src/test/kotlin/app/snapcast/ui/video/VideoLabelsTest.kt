@@ -2,6 +2,7 @@ package app.snapcast.ui.video
 
 import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.DrmInfo
+import app.snapcast.core.model.PagePlayback
 import app.snapcast.core.model.StreamType
 import app.snapcast.core.model.SubtitleTrack
 import app.snapcast.core.model.VideoVariant
@@ -22,6 +23,14 @@ class VideoLabelsTest {
             VideoChip(VideoChipKind.TYPE, "MP4"),
             VideoChip(VideoChipKind.DOMAIN, "cdn.example.com"),
         ).inOrder()
+    }
+
+    @Test
+    fun `the video the page plays is tagged first`() {
+        assertThat(VideoLabels.chips(video().copy(pagePlayback = PagePlayback.PLAYING)).first())
+            .isEqualTo(VideoChip(VideoChipKind.PAGE_PLAYING, null))
+        assertThat(VideoLabels.chips(video().copy(pagePlayback = PagePlayback.PAUSED)).first())
+            .isEqualTo(VideoChip(VideoChipKind.PAGE_PAUSED, null))
     }
 
     @Test

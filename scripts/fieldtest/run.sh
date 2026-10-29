@@ -217,6 +217,13 @@ report "page"
 open_list
 shot 02-list 4
 report "video list"
+# The page's own player plays the HLS stream (muted autoplay in its iframe): it is tagged and listed first.
+if center="$(find_center "^Playing on page$")"; then
+  hls_y="$(find_center "^HLS$" | cut -d' ' -f2)"; mp4_y="$(find_center "^MP4$" | cut -d' ' -f2)"
+  if [ -n "$hls_y" ] && [ -n "$mp4_y" ] && [ "$hls_y" -lt "$mp4_y" ]; then log "playing video tagged and listed first"; else log "PLAYING VIDEO NOT FIRST (HLS at $hls_y, MP4 at $mp4_y)"; fi
+else
+  log "PLAYING VIDEO NOT TAGGED"
+fi
 
 mark 03-play-hls
 play_kind HLS 03-play-hls

@@ -139,6 +139,10 @@ data class DrmInfo(
 @Serializable
 enum class DetectionSource { NETWORK, DOM, BOTH }
 
+/** What the page's own player is doing with a video: the one the page shows, playing or paused. */
+@Serializable
+enum class PagePlayback { PLAYING, PAUSED }
+
 /** A video stream found while browsing. Immutable; updates produce copies. */
 @Serializable
 data class DetectedVideo(
@@ -181,6 +185,8 @@ data class DetectedVideo(
     val source: DetectionSource = DetectionSource.NETWORK,
     val detectedAt: Long = 0L,
     val isPrivate: Boolean = false,
+    /** Set on the video the page's player plays (or paused last), which the list shows first. */
+    @Transient val pagePlayback: PagePlayback? = null,
 ) {
     val isDrmProtected: Boolean get() = drm != null
 

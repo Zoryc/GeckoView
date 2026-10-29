@@ -11,6 +11,7 @@ import app.snapcast.core.detection.HelloMessage
 import app.snapcast.core.detection.MediaMessage
 import app.snapcast.core.detection.MediaReport
 import app.snapcast.core.detection.PageMessage
+import app.snapcast.core.detection.PlaybackMessage
 import app.snapcast.core.detection.NativeCommand
 import app.snapcast.core.detection.RescanCommand
 import app.snapcast.core.detection.ThumbnailsCommand
@@ -173,6 +174,7 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
             is PageMessage -> tab.collector.onPage(message)
             is MediaMessage -> addReports(tab, message.items)
             is DrmMessage -> tab.collector.markDrm(DrmInfo(system = message.keySystem, reason = DRM_REASON_ENCRYPTED))
+            is PlaybackMessage -> tab.playback.onPlayback(message)
         }
         applyMediaTitle(tab)
         publish()
@@ -259,7 +261,7 @@ internal class DetectedVideoRepositoryImpl @Inject constructor(
     /** Publishes every tab's raw and visible lists and announces newly visible videos. */
     private fun publish() {
         val raw = LinkedHashMap<String, List<DetectedVideo>>(tabs.size)
-        for ((tabId, tab) in tabs) raw[tabId] = tab.collector.videos
+        for ((tabId, tab) in tabs) raw[tabId] = tab.videos()
         val settings = settingsRepository.settings.value
         val visible = LinkedHashMap<String, List<DetectedVideo>>(raw.size)
         for ((tabId, videos) in raw) visible[tabId] = DetectionFilter.apply(videos, settings)

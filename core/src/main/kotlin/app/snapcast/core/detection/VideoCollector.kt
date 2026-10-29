@@ -10,6 +10,7 @@ import app.snapcast.core.model.StreamType
 import app.snapcast.core.model.SubtitleFormat
 import app.snapcast.core.model.SubtitleTrack
 import app.snapcast.core.util.UrlUtils
+import kotlin.math.abs
 
 /**
  * Per-tab, single-threaded accumulator that turns raw [MediaReport]s into a de-duplicated list of
@@ -56,7 +57,13 @@ class VideoCollector(
         var explicitTitle: Boolean,
         /** Poster came from the media element rather than the og:image fallback. */
         var explicitPoster: Boolean,
-    )
+    ) {
+        /** Frames that asked for it or showed it (without fragment), most recent last. */
+        val frameUrls = LinkedHashSet<String>()
+
+        /** When the network last asked for it (or for one of its folded playlists); 0 for DOM-only entries. */
+        var lastNetworkAt = 0L
+    }
 
     /**
      * Metadata of a blob: (MediaSource) element, applied to the adaptive stream feeding it. The element's
@@ -86,6 +93,8 @@ class VideoCollector(
     /** Newest Cookie header seen per host in this tab, most recently changed last. */
     private val tabCookies = LinkedHashMap<String, String>()
     private val foldedIds = HashSet<String>()
+    /** Folded variant id -> the master it was folded into. */
+    private val foldedInto = HashMap<String, String>()
     private var tabDrm: DrmInfo? = null
     private var pendingEnrichment: Enrichment? = null
     private var currentPageUrl: String? = null
@@ -129,9 +138,51 @@ class VideoCollector(
         }
 
         val id = UrlUtils.stableId(url)
-        if (id in foldedIds) return null
+        if (id in foldedIds) {
+            // A variant the page's player loads still says which frame plays its master, and when.
+            foldedInto[id]?.let(entries::get)?.let { noteSource(it, report, isDom) }
+            return null
+        }
         val existing = entries[id]
-        return if (existing == null) create(id, url, type, report, isDom) else merge(existing, type, report, isDom)
+        val video = if (existing == null) create(id, url, type, report, isDom) else merge(existing, type, report, isDom)
+        entries[id]?.let { noteSource(it, report, isDom) }
+        return video
+    }
+
+    /**
+     * The listed video a page's player plays ([playback]), or null: the entry for its http(s) source, else (a
+     * MediaSource player) the HLS/DASH stream its frame asked for, of the same duration when that is known,
+     * the most recently requested one. When no stream came from that frame, every stream of the tab counts.
+     */
+    fun videoPlayedBy(playback: PlaybackMessage): String? {
+        val src = playback.src?.trim()?.let(UrlUtils::withoutHlsDirectives)
+        if (src != null && UrlUtils.isHttp(src)) {
+            val id = UrlUtils.stableId(src)
+            return if (id in entries) id else foldedInto[id]?.takeIf { it in entries }
+        }
+        if (!playback.blob) return null
+        val streams = entries.values.filter { it.video.type.isAdaptive }
+        val frame = playback.frameUrl.clean()?.let { withoutFragment(it) }
+        val sameFrame = streams.filter { frame != null && frame in it.frameUrls }.ifEmpty { streams }
+        val duration = playback.duration?.takeIf { it.isFinite() && it > 0 }
+        val sameLength = if (duration == null) {
+            sameFrame
+        } else {
+            val tolerance = maxOf(DURATION_TOLERANCE_SEC, duration * DURATION_TOLERANCE_RATIO)
+            sameFrame.filter { entry -> entry.video.durationSec?.let { abs(it - duration) <= tolerance } == true }
+                .ifEmpty { sameFrame }
+        }
+        return sameLength.maxByOrNull { it.lastNetworkAt }?.video?.id
+    }
+
+    /** Remembers the frame a report came from and, for a network one, when it arrived. */
+    private fun noteSource(entry: Entry, report: MediaReport, isDom: Boolean) {
+        report.frameUrl.clean()?.let { withoutFragment(it) }?.let { frame ->
+            entry.frameUrls.remove(frame)
+            entry.frameUrls += frame
+            while (entry.frameUrls.size > MAX_FRAMES) entry.frameUrls.remove(entry.frameUrls.first())
+        }
+        if (!isDom) entry.lastNetworkAt = clock()
     }
 
     private fun create(id: String, url: String, type: StreamType, report: MediaReport, isDom: Boolean): DetectedVideo {
@@ -269,6 +320,7 @@ class VideoCollector(
     fun onMasterParsed(masterVideoId: String, variantUrls: Collection<String>): List<String> {
         val ids = variantUrls.map { UrlUtils.stableId(it) }.filter { it != masterVideoId }.distinct()
         foldedIds += ids
+        for (id in ids) foldedInto[id] = masterVideoId
         val master = entries[masterVideoId]
         val removed = ids.filter { it in entries }
         for (id in removed) {
@@ -293,6 +345,8 @@ class VideoCollector(
         )
         if (takeTitle) master.explicitTitle = true
         if (takePoster) master.explicitPoster = true
+        for (frame in variant.frameUrls) if (master.frameUrls.size < MAX_FRAMES) master.frameUrls += frame
+        master.lastNetworkAt = maxOf(master.lastNetworkAt, variant.lastNetworkAt)
     }
 
     fun addSubtitle(track: SubtitleTrack) {
@@ -323,6 +377,7 @@ class VideoCollector(
         tabSubtitles.clear()
         tabCookies.clear()
         foldedIds.clear()
+        foldedInto.clear()
         tabDrm = null
         pendingEnrichment = null
         currentPageUrl = newPageUrl.clean()
@@ -464,6 +519,13 @@ class VideoCollector(
 
     private companion object {
         const val SOURCE_DOM = "dom"
+        const val MAX_FRAMES = 8
+
+        /** A player's duration matches a stream's within the larger of these (players round, playlists sum). */
+        const val DURATION_TOLERANCE_SEC = 2.0
+        const val DURATION_TOLERANCE_RATIO = 0.01
+
+        fun withoutFragment(url: String): String = url.substringBefore('#')
         const val MAX_COOKIE_HOSTS = 64
         /** Other captured headers replayed as sent: Authorization (origin host only), and content negotiation. */
         val EXTRA_HEADERS = listOf("authorization" to "Authorization", "accept" to "Accept", "accept-language" to "Accept-Language")

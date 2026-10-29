@@ -10,6 +10,9 @@
  * While the app's video list is open it asks for frame thumbnails: every frame then draws each loaded
  * video once into a small canvas and reports it (never before, so pages pay nothing for it otherwise).
  *
+ * Every frame also says when one of its <video> elements starts or stops playing ("playback" messages),
+ * so the app can tell which of the videos it found is the one the page shows. Only changes are sent.
+ *
  * Only the top frame talks to the app: it opens runtime.connectNative("snapcast"), says hello, sends
  * page metadata and its own findings, and relays what the background page delivers (network finds and
  * the findings of child frames). Child frames send their findings to the background page.
@@ -28,6 +31,10 @@
   const NATIVE_APP = 'snapcast';
   const TEXT_TRACK_KINDS = new Set(['subtitles', 'captions']);
   const MEDIA_EVENTS = ['loadstart', 'loadedmetadata', 'durationchange', 'play', 'emptied'];
+  /** Events after which a <video>'s playback state is reported (when it changed). */
+  const PLAYBACK_EVENTS = ['playing', 'pause', 'ended', 'emptied', 'durationchange', 'volumechange'];
+  /** The native link replays the playback state of at most this many elements. */
+  const MAX_PLAYBACK_STATES = 20;
   const SCAN_DEBOUNCE_MS = 300;
   const SCAN_MAX_WAIT_MS = 1500;
   const BROADCAST_ECHO_MS = 1500;
@@ -423,6 +430,8 @@
     let page = null;
     let log = [];
     let logItems = 0;
+    /** Latest playback message per element ("frameUrl#element"), replayed after the log. */
+    const playback = new Map();
 
     function post(target, message) {
       try {
@@ -438,6 +447,7 @@
       if (greeting) post(target, greeting);
       if (page) post(target, page);
       for (const message of C.mergeMessages(log, 50)) post(target, message);
+      for (const message of playback.values()) post(target, message);
     }
 
     function scheduleReconnect() {
@@ -501,6 +511,14 @@
       if (message.type === 'hello') return;
       if (message.type === 'page') {
         page = message;
+        return;
+      }
+      // Only an element's current state matters: play/pause toggles never fill the log.
+      if (message.type === 'playback') {
+        const key = `${message.frameUrl || ''}#${message.element}`;
+        playback.delete(key);
+        playback.set(key, message);
+        while (playback.size > MAX_PLAYBACK_STATES) playback.delete(playback.keys().next().value);
         return;
       }
       // Frame thumbnails are sent once; replays (on every rescan) would only resend the same pictures.
@@ -576,6 +594,9 @@
      * it) or when the element plays another source.
      */
     const captures = typeof WeakMap === 'function' ? new WeakMap() : new Map();
+    /** Per element: its number in this frame and the playback state last reported for it. */
+    const players = typeof WeakMap === 'function' ? new WeakMap() : new Map();
+    let nextPlayer = 1;
     /** Policy from the document's Referrer-Policy response header (asked of the background page). */
     let headerPolicy = null;
     /** Scans and pictures wait for that answer (at most POLICY_WAIT_MS), so no report has a Referer the page won't send. */
@@ -816,6 +837,45 @@
       if (nodeName(event && event.target) === 'VIDEO') scheduleScan();
     }
 
+    /**
+     * Reports the playback state of the <video> an event came from when it changed: playing or not, its
+     * http(s) source (none for a MediaSource player, whose stream the app matches by frame and duration),
+     * its duration and whether it is muted. An element that lost its source is reported without one, so
+     * the app forgets it.
+     */
+    function onPlaybackEvent(event) {
+      const element = event && event.target;
+      if (nodeName(element) !== 'VIDEO') return;
+      try {
+        const src = text(element.currentSrc) || text(element.src) || '';
+        const blob = isBlobUrl(src);
+        const http = blob ? undefined : httpOnly(absolute(src, baseUrlOf(element)));
+        let player = players.get(element);
+        if (!blob && !http) {
+          if (player && player.state !== null) {
+            player.state = null;
+            emit({ type: 'playback', frameUrl: location(), element: player.id, blob: false, paused: true, at: now() });
+          }
+          return;
+        }
+        const paused = Boolean(element.paused || element.ended);
+        // A paused element that was never reported playing tells nothing (a preloaded player, an ad slot).
+        if (paused && (!player || player.state === null)) return;
+        if (!player) {
+          player = { id: nextPlayer++, state: null };
+          players.set(element, player);
+        }
+        const muted = Boolean(element.muted || element.volume === 0);
+        const duration = positive(element.duration);
+        const state = `${paused}|${http || ''}|${blob}|${duration || ''}|${muted}`;
+        if (state === player.state) return;
+        player.state = state;
+        emit(C.compact({ type: 'playback', frameUrl: location(), element: player.id, src: http, blob, duration, paused, muted, at: now() }));
+      } catch (ignored) {
+        // Best effort: the list just has no "playing" mark.
+      }
+    }
+
     function onEncrypted() {
       if (drmReported) return;
       drmReported = true;
@@ -907,6 +967,7 @@
     }
 
     for (const type of MEDIA_EVENTS) listen(doc, type, onMediaEvent, true);
+    for (const type of PLAYBACK_EVENTS) listen(doc, type, onPlaybackEvent, true);
     listen(doc, 'encrypted', onEncrypted, true);
     listen(doc, 'DOMContentLoaded', () => scheduleScan(50), false);
     listen(win, 'load', () => scheduleScan(50), false);

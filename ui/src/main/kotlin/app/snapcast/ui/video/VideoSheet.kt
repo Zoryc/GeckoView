@@ -582,6 +582,8 @@ private fun VideoThumbnail(video: DetectedVideo, posterFailed: Boolean, onPoster
 private fun VideoChipTag(chip: VideoChip) {
     val extras = SnapcastThemeExtras.colors
     val (container, content) = when (chip.kind) {
+        VideoChipKind.PAGE_PLAYING, VideoChipKind.PAGE_PAUSED ->
+            MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
         VideoChipKind.TYPE -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
         VideoChipKind.QUALITY, VideoChipKind.QUALITY_RANGE ->
             MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
@@ -592,6 +594,8 @@ private fun VideoChipTag(chip: VideoChip) {
     val text = when {
         chip.kind == VideoChipKind.QUALITY_RANGE -> stringResource(R.string.ui_video_quality_up_to, chip.text.orEmpty())
         chip.text != null -> chip.text
+        chip.kind == VideoChipKind.PAGE_PLAYING -> stringResource(R.string.ui_video_chip_page_playing)
+        chip.kind == VideoChipKind.PAGE_PAUSED -> stringResource(R.string.ui_video_chip_page_paused)
         chip.kind == VideoChipKind.LIVE -> stringResource(R.string.ui_video_chip_live)
         chip.kind == VideoChipKind.DRM -> stringResource(R.string.ui_video_chip_drm)
         chip.kind == VideoChipKind.SUBTITLES -> stringResource(R.string.ui_video_chip_cc)

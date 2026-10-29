@@ -1,12 +1,18 @@
 package app.snapcast.detection
 
+import app.snapcast.core.detection.PagePlaybackTracker
 import app.snapcast.core.detection.VideoCollector
+import app.snapcast.core.model.DetectedVideo
+import app.snapcast.core.model.PagePlayback
 import org.mozilla.geckoview.WebExtension
 
 /** Detection state of one tab. Main thread only. */
 internal class TabDetection(val tabId: String, val isPrivate: Boolean, private val clock: () -> Long) {
     val collector = VideoCollector(tabId, isPrivate, clock)
     val inspections = InspectionTracker()
+
+    /** Which of the page's `<video>` elements its viewer watches. */
+    val playback = PagePlaybackTracker()
 
     /** Incremented whenever the list is reset, so late inspection results of an old document are dropped. */
     var generation = 0
@@ -61,8 +67,17 @@ internal class TabDetection(val tabId: String, val isPrivate: Boolean, private v
     fun resetDocument(pageUrl: String?) {
         collector.reset(pageUrl)
         inspections.clear()
+        playback.clear()
         mediaTitle = null
         generation += 1
+    }
+
+    /** The tab's videos, the one the page's player plays (or paused last) first and marked. */
+    fun videos(): List<DetectedVideo> {
+        val videos = collector.videos
+        val current = playback.current ?: return videos
+        val id = collector.videoPlayedBy(current) ?: return videos
+        return PagePlaybackTracker.mark(videos, id, if (current.paused) PagePlayback.PAUSED else PagePlayback.PLAYING)
     }
 
     /** Records a location change; true for the first one after [startDocument] (the document's own URL). */
