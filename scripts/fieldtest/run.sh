@@ -120,7 +120,16 @@ shot() { sleep "${2:-2}"; adb exec-out screencap -p > "$OUT/$LABEL-$1.png"; log 
 report() { # title
   echo "::group::[$LABEL] $1"; ui_text; echo "--- logcat"; \
     adb logcat -d -v brief 2>/dev/null | grep -iE "ExoPlayer|PlaybackException|InvalidResponseCode|HttpDataSource|Response code|AndroidRuntime|FATAL|Snapcast|coil|Coil" | tail -n 60; \
-    echo "::endgroup::"; adb logcat -c; }
+    # Crashes have their own buffer, which Gecko's chatty main log cannot push out.
+    echo "--- crash buffer"; adb logcat -d -b crash -v brief 2>/dev/null | tail -n 80; \
+    echo "::endgroup::"; adb logcat -c; adb logcat -b crash -c 2>/dev/null; }
+
+# Why Snapcast's process ended, if it did (crash, ANR, low memory, killed), as Android recorded it.
+exit_info() {
+  echo "::group::[$LABEL] process exits"
+  adb shell dumpsys activity exit-info "$PKG" 2>/dev/null | grep -E "ApplicationExitInfo|reason=|description=|importance=|pss=|rss=|timestamp=" | head -n 60
+  echo "::endgroup::"
+}
 
 leave_player() {
   adb shell input keyevent KEYCODE_BACK; sleep 2
@@ -197,7 +206,11 @@ adb logcat -c
 
 log "open test site"
 adb shell am start -W -a android.intent.action.VIEW -d "$SITE" -n "$ACTIVITY" >/dev/null
-if ! wait_for "Videos found on this page" 150 >/dev/null; then log "video button never appeared"; fi
+if ! wait_for "Videos found on this page" 150 >/dev/null; then
+  log "video button never appeared"
+  adb shell dumpsys activity activities 2>/dev/null | grep -E "mResumedActivity|topResumedActivity" | head -n 3
+  exit_info
+fi
 shot 01-page 8
 report "page"
 
@@ -271,4 +284,5 @@ for f in $(adb shell "grep -l 'Cmd line: app.snapcast' /data/anr/* 2>/dev/null" 
   echo "::endgroup::"
   adb shell "rm -f /data/anr/$f" >/dev/null 2>&1 || true
 done
+exit_info
 log "done"
