@@ -7,7 +7,9 @@ machine, which the emulator reaches as 10.0.2.2):
   site.<ip>.nip.io   the page the user opens: og:image, a hotlink-protected MP4, an iframe player
   embed.<ip>.nip.io  the embedded player: sets a session cookie, mints an expiring token, plays HLS
                      with hls.js (MSE, so the <video> element only has a blob: source)
-  cdn.<ip>.nip.io    playlists and segments; answers 403 unless Referer, cookie and token are valid
+  cdn.<ip>.nip.io    playlists and segments; answers 403 unless Referer, cookie and token are valid, except
+                     that an expired master playlist link answers 200 with a web page. The master playlist
+                     starts with a UTF-8 byte order mark.
 
 Every request is logged as JSON lines to the file given by --log so a test can show exactly which
 request was refused and why.
@@ -170,16 +172,22 @@ if (window.Hls && Hls.isSupported()) {{
                 return self._send(403, b"bad referer", headers=cors, reason="bad referer")
             if cookie.get("sess") is None or cookie["sess"].value != "ok":
                 return self._send(403, b"no session", headers=cors, reason="no session cookie")
+            path = url.path
             if not token_ok((q.get("t") or [""])[0]):
+                if path == "/hls/master.m3u8":
+                    # Like many streaming sites, an expired playlist link answers 200 with a web page.
+                    page = "<!doctype html><html><head><title>Lien expiré</title></head><body>Ce lien a expiré.</body></html>"
+                    return self._send(200, page.encode(), "text/html; charset=utf-8", cors, reason="expired token, page")
                 return self._send(403, b"expired", headers=cors, reason="bad or expired token")
             t = q["t"][0]
-            path = url.path
             if path == "/hls/master.m3u8":
                 lines = ["#EXTM3U", "#EXT-X-VERSION:3"]
                 for h, w, bw in ((360, 640, 800000), (720, 1280, 2500000), (1080, 1920, 5000000)):
                     lines += [f"#EXT-X-STREAM-INF:BANDWIDTH={bw},RESOLUTION={w}x{h},CODECS=\"avc1.64001f,mp4a.40.2\"",
                               f"{h}p/index.m3u8?t={t}"]
-                return self._send(200, ("\n".join(lines) + "\n").encode(), "application/vnd.apple.mpegurl", cors)
+                # A byte order mark first, as some site generators write it: browsers drop it, strict parsers refuse it.
+                body = ("\ufeff" + "\n".join(lines) + "\n").encode()
+                return self._send(200, body, "application/vnd.apple.mpegurl", cors)
             parts = path.strip("/").split("/")
             if len(parts) == 3 and parts[0] == "hls":
                 rendition, name = parts[1], parts[2]

@@ -118,7 +118,9 @@ object HlsParser {
      * its EXT-X-DEFINE variables are substituted.
      */
     fun parse(text: String, playlistUrl: String): HlsPlaylist? {
-        val written = text.removePrefix("﻿").split(LINE_BREAK).map { it.trim() }.filter { it.isNotEmpty() }
+        val written = text.trimStart { it == '\uFEFF' || it.isWhitespace() }.split(LINE_BREAK)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
         val variables = HlsVariables.defined(written.asSequence(), playlistUrl)
         val lines = if (variables.isEmpty()) written else written.map { HlsVariables.substitute(it, variables) }
         if (lines.isEmpty() || !lines.first().startsWith(EXTM3U, ignoreCase = true)) return null

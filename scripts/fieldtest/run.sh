@@ -128,11 +128,17 @@ leave_player() {
   adb shell am start -W -n "$ACTIVITY" >/dev/null 2>&1; sleep 2
 }
 
+# Logs whether the player shows its error overlay.
+check_played() { # step-name
+  if find_center "^Can.t play this video$" >/dev/null; then log "PLAYBACK ERROR at $1"; else log "$1: no error shown"; fi
+}
+
 watch_player() { # step-name
   sleep 6
   # Android's one-time "Viewing full screen" hint covers the video; dismiss it.
   find_center "^Got it$" >/dev/null && tap "^Got it$" 5
   shot "$1" 12
+  check_played "$1"
   report "player $1"
   leave_player
 }
@@ -217,6 +223,8 @@ log "waiting for tokens to expire"
 sleep 130
 mark 06-play-hls-expired
 open_list; play_kind HLS 06-play-hls-expired keep
+# The expired master link answers with a web page: the player must say so rather than "malformed".
+if find_center "sent a page instead of the video" >/dev/null; then log "expired link explained"; else log "EXPIRED LINK NOT EXPLAINED"; fi
 # The refused link offers to reload the page; the browser then plays the video again by itself.
 if find_center "^Reload page$" >/dev/null; then
   log "Reload page offered"
