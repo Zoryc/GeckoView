@@ -18,6 +18,40 @@ mark() { curl -fsS -o /dev/null -H "Host: site.10.0.2.2.nip.io:8080" "http://127
 dump_ui() {
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
   adb exec-out cat /sdcard/ui.xml > "$WORK/ui.xml" 2>/dev/null || true
+  dismiss_not_responding
+}
+
+# A slow emulator sometimes shows "<app> isn't responding" (often the launcher) over everything, and the
+# dump then holds only that dialog. Tap Wait and dump again; a Snapcast one is logged as such.
+dismiss_not_responding() {
+  local found
+  found="$(python3 - "$WORK/ui.xml" <<'PY'
+import re, sys
+import xml.etree.ElementTree as ET
+try:
+    root = ET.parse(sys.argv[1]).getroot()
+except Exception:
+    sys.exit(1)
+title = wait = None
+for node in root.iter("node"):
+    value = node.get("text") or ""
+    if re.search(r"isn.t responding$", value):
+        title = value
+    if value == "Wait":
+        x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds", "")))
+        wait = f"{(x1 + x2) // 2} {(y1 + y2) // 2}"
+if title and wait:
+    print(f"{wait}|{title}")
+    sys.exit(0)
+sys.exit(1)
+PY
+)" || return 0
+  log "system dialog: ${found#*|}, tapping Wait"
+  # shellcheck disable=SC2086
+  adb shell input tap ${found%%|*}
+  sleep 2
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
+  adb exec-out cat /sdcard/ui.xml > "$WORK/ui.xml" 2>/dev/null || true
 }
 
 # Prints "x y" of the centre of the n-th (1-based) node whose text or content-desc matches.
