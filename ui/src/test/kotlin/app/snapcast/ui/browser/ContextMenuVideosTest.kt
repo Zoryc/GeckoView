@@ -3,6 +3,7 @@ package app.snapcast.ui.browser
 import app.snapcast.core.model.DetectedVideo
 import app.snapcast.core.model.DetectionSource
 import app.snapcast.core.model.MediaHeaders
+import app.snapcast.core.model.PagePlayback
 import app.snapcast.core.model.StreamType
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -43,6 +44,14 @@ class ContextMenuVideosTest {
         val other = detected("https://cdn.example.com/clip.webm", StreamType.WEBM)
         val result = ContextMenuVideos.resolve("blob:https://videos.example.com/1234", null, page, listOf(mp4, hls, other), 0)
         assertThat(result).isSameInstanceAs(hls)
+    }
+
+    @Test
+    fun `blob source maps to the stream the page plays, which the list shows first`() {
+        val episode = detected("https://cdn.example.com/episode/master.m3u8", StreamType.HLS).copy(pagePlayback = PagePlayback.PAUSED)
+        val trailer = detected("https://cdn.example.com/trailer/master.m3u8", StreamType.HLS)
+        val result = ContextMenuVideos.resolve("blob:https://videos.example.com/1234", null, page, listOf(episode, trailer), 0)
+        assertThat(result).isSameInstanceAs(episode)
     }
 
     @Test
