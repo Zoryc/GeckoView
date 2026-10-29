@@ -139,7 +139,10 @@ internal class BrowserViewModel @Inject constructor(
         .mapLatest { query -> buildSuggestions(query) }
         .stateIn(viewModelScope, whileSubscribed, emptyList())
 
+    /** What the receiver plays; null when it plays nothing (also once stopped, or after its last item). */
     val castPlayback: StateFlow<RemotePlaybackState?> = castController.playback
+        .map { it?.takeUnless(RemotePlaybackState::isEnded) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, castController.playback.value?.takeUnless { it.isEnded })
 
     val castDevice: StateFlow<CastDeviceInfo?> = castController.target.device
 

@@ -53,6 +53,13 @@ class ReceiverQueueTest {
     }
 
     @Test
+    fun `a cast stopped while playing is ended, so screens show nothing playing`() {
+        // The receiver still reports the stopped video's title and duration; nothing can resume it.
+        assertThat(state(RemotePlayerState.IDLE, "CANCELED", currentItemId = 1).isEnded).isTrue()
+        assertThat(state(RemotePlayerState.PAUSED).isEnded).isFalse()
+    }
+
+    @Test
     fun `an item finishing before the next one starts does not end the queue`() {
         assertThat(ReceiverQueue.isEnded(state(RemotePlayerState.IDLE, "FINISHED", currentItemId = 1))).isFalse()
     }

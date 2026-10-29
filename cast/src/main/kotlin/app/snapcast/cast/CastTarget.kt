@@ -57,7 +57,25 @@ data class RemotePlaybackState(
     /** IdleReason name when idle after an error/finish ("FINISHED", "ERROR", ...). */
     val idleReason: String?,
     val originalUrl: String?,
-)
+) {
+    /**
+     * Nothing is left to play on the receiver: playback was stopped (CANCELED), or the last item finished or
+     * failed. IDLE without a reason and INTERRUPTED are brief states while a load replaces the current item.
+     * Screens show such a receiver as casting nothing (there is nothing a play button could resume).
+     */
+    val isEnded: Boolean
+        get() {
+            if (playerState != RemotePlayerState.IDLE) return false
+            return when (idleReason) {
+                "CANCELED" -> true
+                "FINISHED", "ERROR" -> {
+                    val index = queue.indexOfFirst { it.itemId == currentItemId }
+                    index < 0 || index == queue.lastIndex
+                }
+                else -> false
+            }
+        }
+}
 
 /** Text track to attach to a [CastMedia]; [url] must be reachable by the receiver (usually the proxy). */
 data class CastSubtitle(

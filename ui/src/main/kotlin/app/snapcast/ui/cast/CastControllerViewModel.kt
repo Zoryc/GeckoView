@@ -45,14 +45,15 @@ internal class CastControllerViewModel @Inject constructor(
 
     val uiState: StateFlow<CastScreenState> =
         combine(controller.connectionState, controller.target.device, controller.playback) { connection, device, playback ->
-            CastScreenState(connection, device, playback)
+            // A stopped or finished receiver is casting nothing: no controls that could not do anything.
+            CastScreenState(connection, device, playback?.takeUnless { it.isEnded })
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
             initialValue = CastScreenState(
                 controller.connectionState.value,
                 controller.target.device.value,
-                controller.playback.value,
+                controller.playback.value?.takeUnless { it.isEnded },
             ),
         )
 
