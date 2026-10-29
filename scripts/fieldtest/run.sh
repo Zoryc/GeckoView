@@ -22,7 +22,9 @@ dump_ui() {
 }
 
 # A slow emulator sometimes shows "<app> isn't responding" (often the launcher) over everything, and the
-# dump then holds only that dialog. Tap Wait and dump again; a Snapcast one is logged as such.
+# dump then holds only that dialog. Another app's dialog is answered "Close app" (Wait lets it come back every
+# few seconds and swallow the driver's taps); Snapcast's is a real ANR: logged loudly and answered Wait. Either
+# way Android's reason and CPU usage summary are printed, which show what loaded the device.
 dismiss_not_responding() {
   local found
   found="$(python3 - "$WORK/ui.xml" <<'PY'
@@ -32,23 +34,34 @@ try:
     root = ET.parse(sys.argv[1]).getroot()
 except Exception:
     sys.exit(1)
-title = wait = None
+title = None
+buttons = {}
 for node in root.iter("node"):
     value = node.get("text") or ""
     if re.search(r"isn.t responding$", value):
         title = value
-    if value == "Wait":
+    if value in ("Wait", "Close app"):
         x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds", "")))
-        wait = f"{(x1 + x2) // 2} {(y1 + y2) // 2}"
-if title and wait:
-    print(f"{wait}|{title}")
-    sys.exit(0)
-sys.exit(1)
+        buttons[value] = f"{(x1 + x2) // 2} {(y1 + y2) // 2}"
+if not title:
+    sys.exit(1)
+button = "Wait" if title.startswith("Snapcast") or "Close app" not in buttons else "Close app"
+if button not in buttons:
+    sys.exit(1)
+print(f"{buttons[button]}|{button}|{title}")
 PY
 )" || return 0
-  log "system dialog: ${found#*|}, tapping Wait"
+  local center="${found%%|*}" rest="${found#*|}"
+  local button="${rest%%|*}" title="${rest#*|}"
+  case "$title" in
+    Snapcast*) log "SNAPCAST NOT RESPONDING: $title, tapping $button" ;;
+    *) log "system dialog: $title, tapping $button" ;;
+  esac
+  echo "::group::[$LABEL] ANR reason ($title)"
+  adb logcat -d -v brief 2>/dev/null | grep -A 25 "ANR in" | tail -n 60
+  echo "::endgroup::"
   # shellcheck disable=SC2086
-  adb shell input tap ${found%%|*}
+  adb shell input tap $center
   sleep 2
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
   adb exec-out cat /sdcard/ui.xml > "$WORK/ui.xml" 2>/dev/null || true
