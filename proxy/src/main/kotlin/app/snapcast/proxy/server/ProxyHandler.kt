@@ -27,10 +27,14 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.IOException
 import java.io.InputStream
 import java.io.PushbackInputStream
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.UnknownHostException
 import java.util.Locale
 import java.util.zip.GZIPInputStream
 import java.util.zip.Inflater
 import java.util.zip.InflaterInputStream
+import javax.net.ssl.SSLException
 
 /** The parts of a client request the proxy looks at. */
 internal class ClientRequest(
@@ -166,9 +170,22 @@ internal class ProxyHandler(
         val url = target.url.toHttpUrlOrNull() ?: return Responses.badGateway("Unsupported upstream URL")
         // Playlists are always fetched whole: a partial playlist cannot be rewritten.
         val range = if (target.knownPlaylist) null else ByteRange.parse(request.header("range"))
-        if (request.isHead && !target.knownPlaylist) return headRemote(url, target, range)
-        val response = upstream.execute(url, "GET", target.stream.policy, range?.headerValue, identity = !target.knownPlaylist)
-        return answer(response, target, range, request.isHead)
+        try {
+            if (request.isHead && !target.knownPlaylist) return headRemote(url, target, range)
+            val response = upstream.execute(url, "GET", target.stream.policy, range?.headerValue, identity = !target.knownPlaylist)
+            return answer(response, target, range, request.isHead)
+        } catch (e: IOException) {
+            unreachableReason(e)?.let { report(target, StreamProblem.Kind.UNREACHABLE, it) }
+            throw e
+        }
+    }
+
+    /** Why the server could not be reached at all (no HTTP answer), or null for other I/O failures. */
+    private fun unreachableReason(e: IOException): String? = when (e) {
+        is SSLException -> "a certificate the phone does not trust"
+        is UnknownHostException -> "a name the phone cannot resolve"
+        is ConnectException, is NoRouteToHostException -> "a connection the phone could not open"
+        else -> null
     }
 
     private fun answer(response: UpstreamResponse, target: Target, range: ByteRange?, head: Boolean): ProxyResponse {

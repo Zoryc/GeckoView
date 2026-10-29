@@ -464,7 +464,16 @@ internal class CastControllerImpl @Inject constructor(
             if (result.isFailure) {
                 Log.w(TAG, "Load failed", result.exceptionOrNull())
                 suppressReceiverErrorsUntil = SystemClock.elapsedRealtime() + RECEIVER_ERROR_SUPPRESS_MS
-                return CastResult.Error(CastErrorKind.LOAD_FAILED, proxyProblemMessage() ?: string(R.string.cast_error_load_failed))
+                val problem = proxyManager.takeRecentProblem(PROXY_PROBLEM_WINDOW_MS)
+                if (problem != null && problem.kind == StreamProblem.Kind.UNREACHABLE && request is CastRequest.Remote &&
+                    usesProxy(request.direct) && CastMediaRules.canCastDirectly(request.video)
+                ) {
+                    // The phone cannot reach the server (an incomplete certificate chain, a filtering DNS) but
+                    // the Chromecast may: it is how the video plays with the proxy turned off.
+                    Log.w(TAG, "The proxy could not reach the video's server (${problem.description}); casting directly")
+                    return execute(request.copy(direct = true))
+                }
+                return CastResult.Error(CastErrorKind.LOAD_FAILED, problemMessage(problem) ?: string(R.string.cast_error_load_failed))
             }
             val consumed = batch.consumed.mapTo(HashSet()) { it.key }
             _pendingQueue.update { queue -> queue.filterNot { it.key in consumed } }
@@ -791,7 +800,7 @@ internal class CastControllerImpl @Inject constructor(
         if (key == lastReceiverErrorKey) return
         lastReceiverErrorKey = key
         val pageUrl = current.originalUrl?.takeUnless { it in privateUrls }?.let(pagesByUrl::get)
-        val message = proxyProblemMessage() ?: string(R.string.cast_error_playback)
+        val message = problemMessage(proxyManager.takeRecentProblem(PROXY_PROBLEM_WINDOW_MS)) ?: string(R.string.cast_error_playback)
         _events.tryEmit(CastEvent.Error(CastErrorKind.LOAD_FAILED, message, pageUrl))
     }
 
@@ -858,8 +867,9 @@ internal class CastControllerImpl @Inject constructor(
     // endregion
 
     /** What the proxy saw when a proxied stream failed just now, when that explains it better than the receiver. */
-    private fun proxyProblemMessage(): String? = when (proxyManager.takeRecentProblem(PROXY_PROBLEM_WINDOW_MS)?.kind) {
+    private fun problemMessage(problem: StreamProblem?): String? = when (problem?.kind) {
         StreamProblem.Kind.NOT_A_PLAYLIST -> string(R.string.cast_error_link_expired)
+        StreamProblem.Kind.UNREACHABLE -> string(R.string.cast_error_unreachable)
         StreamProblem.Kind.UNSUPPORTED_ENCODING, null -> null
     }
 

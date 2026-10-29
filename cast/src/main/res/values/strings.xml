@@ -24,6 +24,7 @@
     <string name="cast_error_proxy">Couldn\'t start the local streaming server.</string>
     <string name="cast_error_load_failed">The Chromecast couldn\'t load this video.</string>
     <string name="cast_error_playback">The Chromecast stopped playing because of an error.</string>
+    <string name="cast_error_unreachable">This phone couldn\'t connect to the video\'s server, so the local proxy couldn\'t stream it. Casting with \"Use local proxy\" turned off in Settings may work.</string>
     <string name="cast_error_link_expired">The site sent a page instead of the video, so the link has probably expired. Reload the page and cast again.</string>
     <string name="cast_error_queue">Couldn\'t add the video to the queue.</string>
     <string name="cast_error_queue_empty">The queue is empty.</string>

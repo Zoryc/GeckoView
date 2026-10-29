@@ -43,6 +43,13 @@ data class StreamProblem(val streamId: String, val kind: Kind, val description: 
 
         /** The playlist came compressed in a way the proxy cannot decode. */
         UNSUPPORTED_ENCODING,
+
+        /**
+         * The proxy could not reach the server at all: its certificate was not trusted by the phone (a missing
+         * intermediate the Chromecast's browser fetches itself), its name did not resolve (a filtering DNS on
+         * the phone) or the connection was refused. The Chromecast may still reach it directly.
+         */
+        UNREACHABLE,
     }
 }
 
